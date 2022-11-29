@@ -1,0 +1,67 @@
+{
+  "package": {
+    "productName": "Offline Recovery Tool",
+    "version": "0.2.0"
+  },
+  "build": {
+    "distDir": "../dist",
+    "devPath": "http://localhost:5000",
+    "beforeDevCommand": "npm run dev:fe",
+    "beforeBuildCommand": "npm run build:fe",
+    "withGlobalTauri": true
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.safeheron.offline-tool-app.sg",
+      "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
+      "resources": [],
+      "externalBin": [],
+      "copyright": "",
+      "category": "DeveloperTool",
+      "shortDescription": "",
+      "longDescription": "",
+      "deb": {
+        "depends": []
+      },
+      "macOS": {
+        "frameworks": [],
+        "exceptionDomain": "",
+        "signingIdentity": null,
+        "providerShortName": null
+      },
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "updater": {
+      "active": false
+    },
+    "allowlist": {
+      "dialog": {
+        "all": true
+      },
+      "window": {
+        "all": true
+      },
+      "fs": {
+        "all": true
+      }
+    },
+    "windows": [
+      {
+        "title": "Offline Recovery Tool",
+        "width": 700,
+        "height": 500,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

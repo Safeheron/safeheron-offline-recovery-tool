@@ -1,0 +1,114 @@
+{
+  "home": {
+    "verify": "Verify Private Key Shard Backup",
+    "recovery": "Recover Wallet Private Key"
+  },
+  "Verify": {
+    "PrivateKeyVerify": {
+      "desc1": "This function verifies recovery phrase backup without recovering your wallet private key, so as to ensure that when you need to recover your wallet private key, the 3 private key shards' recovery phrases you backed up can 100% recover it.",
+      "desc2": "For the safety of the private key, we won't directly use 3 private key shards' recovery phrases for verification. You need to generate the corresponding private key shard's public key via recovery phrase to verify (this public key can be transmitted over the network, even if your backup member is not with you, you can also verify backup).",
+      "inputTitle": "Fill in private key shard's public key in turn",
+      "placeholder": "Enter {{x}} private key shard's public key"
+    },
+    "Container": {
+      "title": "Verify Private Key Shard Recovery Phrase Backup",
+      "generate": "Generate Private Key Shard's Public Key"
+    },
+    "MnemonicToKey": {
+      "title": "Generate Private Key Shard's Public Key",
+      "desc": "Enter any backup recovery phrase to generate the corresponding private key shard's public key",
+      "next": "Generate",
+      "placeholder": "Enter the 24 words, separated by spaces",
+      "error": "Private Key Shard's Public Key Generation Failure: Please check if the recovery phrase and Chaincode are correct.",
+      "errorV2": "Private Key Shard's Public Key Generation Failure: Please check if the recovery phrase is correct.",
+      "pubkey": "Private Key Shard's Public Key:"
+    },
+    "ChainCodeVerify": {
+      "title": "Enter Chaincode",
+      "placeholer": "Enter Chaincode",
+      "msg": "Chaincode shall be formatted correctly"
+    },
+    "XPubVerify": {
+      "desc": "Compare the public key compounded of 3 private key shard's public keys below with the full public key (Me-Team Info) in Safeheron App. If they are consistent, the verification is done. If they are inconsistent, please check whether the recovery phrase for generating the private key shard's public key is correct.",
+      "error": "Wrong computation of the extended public key. Check whether the private key shard's public key and Chaincode are correct",
+      "errorV2": "Extended Public Key Computation Error: Please check if the public key of the private key shard is correct."
+    }
+  },
+  "common": {
+    "prev": "Previous",
+    "next": "Next",
+    "part1": "First",
+    "part2": "Second",
+    "part3": "Third",
+    "copy": "Copy",
+    "copyed": "Copied",
+    "online": "For your assets security, please disconnect to the Internet(including close VPN) to proceed",
+    "done": "Done",
+    "choose": "Choose"
+  },
+  "Recovery": {
+    "step": {
+      "chaincode": "Enter Chaincode",
+      "mnemonic": "Enter {{x}} Private Key Shard Recovery Phrase",
+      "importFile": "Import Wallet Data File",
+      "exportKey": "Export Wallet Private Key"
+    },
+    "sidebar": {
+      "title": "Wallet Private Key Recovery",
+      "desc": "Follow the steps below to complete wallet private key recovery",
+      "first": "Functionality"
+    },
+    "Description": {
+      "desc": "Use Chaincode, 3 private key shards' recovery phrases, and your wallet data file to recover your wallet private key. If you have multiple teams, then you need to execute the recovery multiple times. Once the private key is recovered, your assets are under risk of loss. Please be cautious for the timing to recover your private key.",
+      "descV2": "To recover your wallet private key, you will need to use three sets of recovery phrases for the private key shards, as well as your wallet data file. If you have multiple teams, this process will need to be done in multiple sessions. It is important to note that there is a risk of losing your assets when recovering the private key, so it is important to carefully consider the timing of this process.",
+      "gotit": "Got it"
+    },
+    "ExportKey": {
+      "title": "Export Wallet Private Key File",
+      "desc": "This file contains private key for all the assets in your wallet, please keep it offline in a safe place.",
+      "recoverHDKeyError": "Recovery Failed: Please confirm that the recovery phrase and Chaincode are correct.",
+      "recoverHDKeyErrorV2": "Recovery Failed: Please confirm that the recovery phrase is correct.",
+      "validateAddress": "Data File Verification Failure: Please check if the data file is correct.",
+      "recoverPrivateKeyError": "Subkey Recovery Failed",
+      "export": "Export te1"
+    },
+    "ImportFile": {
+      "title": "Import Corresponding Wallet Data File",
+      "error": {
+        "missDataRow": "Verification Failed: The corresponding data row is missing.",
+        "missRequiredField": "Verification Failed: Missing required data field ({{fields}}). Please check if the corresponding field exists.",
+        "unsupportBlockChain": "Verification Failed: Blockchain ({{blockchain}}) not supported. Please check the corresponding blockchain type.",
+        "default": "Verification Failed: Please confirm that both the verification item and data file are correct."
+      }
+    },
+    "Result": {
+      "desc": "Private Key Recovered"
+    },
+    "Mnemonic": {
+      "title": "Enter {{x}} Private Key Shard Recovery Phrase",
+      "desc": "Fill in each recovery phrase of the local private key shard, cloud private key shard 1 & cloud private key shard 2 in turn (no need in order). Please avoid any cameras.",
+      "placeholder": "Enter the 24 words for the {{x}} private key shard, separated by spaces",
+      "error": "24 recovery words shall be formatted correctly",
+      "repeat": "Do not enter the duplicate private key shard's recovery phrase",
+      "illega": "Wrong word. Please recheck.",
+      "required": "Enter the private key shard"
+    }
+  },
+  "form": {
+    "extPubKeyVerifyMsg": {
+      "isRequired": "The public key of the private key shard is required",
+      "ed25519IsRequired": "\"ed25519\" field is required.",
+      "ed25519FormatError": "Incorrect value of \"ed25519\" field.",
+      "secp256k1IsRequired": "\"secp256k1\" field is required.",
+      "secp256k1FormatError": "Incorrect value of \"secp256k1\" field.",
+      "formatError": "The public key of the private key shard is not in the expected format",
+      "repeatError": "Do not enter a duplicate public key for a given private key shard"
+    }
+  },
+  "selectVersion": {
+    "title": "Select Version",
+    "desc": "Before selecting a version, please check if the Chaincode is included in the offline recovery tutorial email. If it is, select V1. If it is not, select V2. The version you need to choose will also be specified in the tutorial email.",
+    "v1Btn": "V1 (with Chaincode)",
+    "v2Btn": "V2 (without Chaincode)"
+  }
+}

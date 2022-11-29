@@ -1,0 +1,114 @@
+{
+  "home": {
+    "verify": "私钥分片备份验证",
+    "recovery": "钱包私钥恢复"
+  },
+  "Verify": {
+    "PrivateKeyVerify": {
+      "desc1": "该功能在不恢复您的钱包私钥的前提下，实现对助记词备份的验证，以此保证在您需要恢复钱包私钥时，您备份的 3 份私钥分片助记词可以 100% 恢复出您的私钥。",
+      "desc2": "为了保证私钥安全，我们不会直接使用 3 份私钥分片助记词进行验证，您需要通过助记词生成对应的私钥分片公钥（该公钥可以进行网络传输，即使您的备份成员不在一起，也可以完成备份验证）来进行验证。",
+      "inputTitle": "3 份私钥分片公钥无顺序区分",
+      "placeholder": "请输入{{x}}私钥分片公钥"
+    },
+    "Container": {
+      "title": "私钥分片助记词备份验证",
+      "generate": "生成私钥分片公钥"
+    },
+    "MnemonicToKey": {
+      "title": "生成私钥分片公钥",
+      "desc": "输入任意一份备份的助记词，即可生成对应的私钥分片公钥",
+      "next": "生成",
+      "placeholder": "输入 24 个助记词，用空格隔开",
+      "error": "生成私钥分片公钥失败, 请检查助记词以及Chaincode",
+      "errorV2": "生成私钥分片公钥失败, 请检查助记词",
+      "pubkey": "私钥分片公钥:"
+    },
+    "ChainCodeVerify": {
+      "title": "输入 Chaincode",
+      "placeholer": "请输入 Chaincode",
+      "msg": "请输入正确的 Chaincode"
+    },
+    "XPubVerify": {
+      "desc": "将下方由 3 份私钥分片公钥合成的扩展公钥，与 Safeheron App 中的扩展公钥(我的-团队信息)做对比，若一致，则验证成功，若不一致，请检查用于生成私钥分片公钥的助记词是否正确。",
+      "error": "扩展公钥计算错误，请检查私钥分片公钥与 Chaincode 是否正确",
+      "errorV2": "扩展公钥计算错误，请检查私钥分片公钥是否正确"
+    }
+  },
+  "common": {
+    "prev": "上一步",
+    "next": "下一步",
+    "part1": "第一份",
+    "part2": "第二份",
+    "part3": "第三份",
+    "copy": "复制",
+    "copyed": "已复制",
+    "online": "为了您的资产安全，请断开网络后（包括关闭 VPN 软件）再进行操作",
+    "done": "完成",
+    "choose": "选择"
+  },
+  "Recovery": {
+    "step": {
+      "chaincode": "输入 Chaincode",
+      "mnemonic": "输入{{x}}私钥分片助记词",
+      "importFile": "导入钱包数据文件",
+      "exportKey": "导出钱包私钥"
+    },
+    "sidebar": {
+      "title": "钱包私钥恢复",
+      "desc": "跟随以下步骤完成钱包私钥的恢复",
+      "first": "功能说明"
+    },
+    "Description": {
+      "desc": "使用 Chaincode 与 3 份私钥分片助记词，以及您的钱包数据文件来恢复您的钱包私钥。若您有多个团队，需要分多次操作该恢复流程。私钥恢复后，即存在资产丢失的风险，请您谨慎选择恢复私钥的时机。",
+      "descV2": "使用 3 份私钥分片助记词，以及您的钱包数据文件来恢复您的钱包私钥。若您有多个团队，需要分多次操作该恢复流程。私钥恢复后，即存在资产丢失的风险，请您谨慎选择恢复私钥的时机。",
+      "gotit": "我知道了"
+    },
+    "ExportKey": {
+      "title": "请导出钱包私钥文件",
+      "desc": "该文件包含您钱包中所有资产的私钥，请离线保存在安全的地方",
+      "recoverHDKeyError": "恢复失败，请检查助记词以及 Chaincode 是否正确",
+      "recoverHDKeyErrorV2": "恢复失败，请检查助记词是否正确",
+      "validateAddress": "数据文件检验失败，请检查数据文件是否正确",
+      "recoverPrivateKeyError": "子私钥恢复失败",
+      "export": "导出"
+    },
+    "ImportFile": {
+      "title": "请导入私钥分片对应的钱包数据文件",
+      "error": {
+        "missDataRow": "验证失败, 缺少相应数据行",
+        "missRequiredField": "验证失败, 缺少必要的数据字段({{fields}}), 请检查对应字段数据是否存在",
+        "unsupportBlockChain": "验证失败，存在不支持的 blockchain({{blockchain}}), 请检查对应的 blockchain 值",
+        "default": "验证失败，请检查验证项与数据文件是否正确"
+      } 
+    },
+    "Result": {
+      "desc": "私钥已恢复成功"
+    },
+    "Mnemonic": {
+      "title": "输入{{x}}私钥分片助记词",
+      "desc": "本地私钥分片、云端私钥分片 1、云端私钥分片 2，无顺序区分，依次填写 3 份助记词即可，请注意避开摄像头",
+      "placeholder": "请输入{{x}}私钥分片的 24 个助记词，用空格分隔",
+      "error": "请输入正确的 24 个助记词",
+      "repeat": "请勿输入重复的私钥分片助记词",
+      "illega": "存在非法的助记词，请检查",
+      "required": "请输入私钥分片助记词"
+    }
+  },
+  "form": {
+    "extPubKeyVerifyMsg": {
+      "isRequired": "私钥分片公钥不能为空",
+      "ed25519IsRequired": "ed25519私钥分片公钥不能为空",
+      "ed25519FormatError": "ed25519私钥分片公钥格式不正确",
+      "secp256k1IsRequired": "secp256k1私钥分片公钥不能为空",
+      "secp256k1FormatError": "secp256k1私钥分片公钥格式不正确",
+      "formatError": "私钥分片公钥格式不正确",
+      "repeatError": "请勿输入重复的私钥分片公钥"
+    }
+  },
+  "selectVersion": {
+    "title": "选择版本",
+    "desc": "在选择版本前，请检查给你发送的离线恢复教程邮件，确认是否包含 Chaincode 信息。有 Chaincode 选 V1，无 Chaincode 选 V2。邮件中也会告知您需要选择的版本。",
+    "v1Btn": "V1 (有 Chaincode)",
+    "v2Btn": "V2 (无 Chaincode)"
+  }
+}

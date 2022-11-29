@@ -1,0 +1,22 @@
+[
+  {
+    "WIF": "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn",
+    "privateKeyHex": "0000000000000000000000000000000000000000000000000000000000000001",
+    "mainnet": true
+  },
+  {
+    "WIF": "KxhEDBQyyEFymvfJD96q8stMbJMbZUb6D1PmXqBWZDU2WvbvVs9o",
+    "privateKeyHex": "2bfe58ab6d9fd575bdc3a624e4825dd2b375d64ac033fbc46ea79dbab4f69a3e",
+    "mainnet": true
+  },
+  {
+    "WIF": "cRD9b1m3vQxmwmjSoJy7Mj56f4uNFXjcWMCzpQCEmHASS4edEwXv",
+    "privateKeyHex": "6c4313b03f2e7324d75e642f0ab81b734b724e13fec930f309e222470236d66b",
+    "mainnet": false
+  },
+  {
+    "exception": "Invalid private key",
+    "privateKeyHex": "1233120321",
+    "mainnet": false
+  }
+]
