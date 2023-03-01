@@ -103,3 +103,14 @@ test('Tron address derive', () => {
   const [address] = blockchainUtil.tron.derivedAddress(data.pubkeyHex)
   expect(address).toEqual(data.address)
 })
+
+test('Filecoin address derive', () => {
+  const data = {
+    pubkeyHex: '043977460cd2340c0fc43946cfe2488a1139999dddc4c1b3f1d4a136c0dd3ff260f5935a3e313a1fb66a91d3c54742cb9f4f19e425661bac677969f6c58cf97cdf',
+    address: 'f15nu557kaqpad5bkp5nm4rf7qvjtry2lk5cghhzy',
+    testnetAddr: 't15nu557kaqpad5bkp5nm4rf7qvjtry2lk5cghhzy',
+  }
+  const [mainnetAddr, testnetAddr] = blockchainUtil.filecoin.derivedAddress(data.pubkeyHex)
+  expect(mainnetAddr).toEqual(data.address)
+  expect(testnetAddr).toEqual(data.testnetAddr)
+})
