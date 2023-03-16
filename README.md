@@ -13,7 +13,7 @@
 
 ## Introduction
 
-As a decentralized enterprise-level wallet, Safeheron does not store customers’ private keys. Wallet private key is to be stored by a customer self. When a customer terminates Safeheron service, or Safeheron’s service is no longer available, customers can use Offline Private Key Recovery Tool provided by Safeheron to recover all the private keys. The private key recovered can be imported into other hardware and software wallets.
+As a self-custodial wallet, Safeheron does not store customers’ private keys. All wallet key shards are stored by a customer self. When a customer terminates Safeheron service, or Safeheron’s service is no longer available, customers can use Offline Private Key Recovery Tool provided by Safeheron to recover all the private keys. The private key recovered can be imported into other hardware and software wallets.
 
 ## Get started
 
@@ -43,4 +43,4 @@ Make sure you have Rust and NodeJS environment installed.
 ## Contribution
 
 - make sure `npm test` and `npm run lint` passes.
-- pull request to `dev` branch. Do not submit PRs against the `master` branch.
+- pull request to `dev` branch. Do not submit PRs against the `main` branch.

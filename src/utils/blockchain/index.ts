@@ -4,6 +4,7 @@ import bitcoincash from './bitcoincash'
 import dash from './dash'
 import tron from './tron'
 import near from './near'
+import filecoin from './filecoin'
 
 export default {
   bitcoin,
@@ -11,5 +12,6 @@ export default {
   bitcoincash,
   dash,
   tron,
-  near
+  near,
+  filecoin,
 }
