@@ -25,7 +25,7 @@ module.exports = {
     rules: [
       {
         test: /\.(js|ts|tsx)$/,
-        exclude: /node_modules/,
+        exclude: /node_modules\/(?!(@tauri-apps\/))/,
         use: 'babel-loader',
       },
       {
