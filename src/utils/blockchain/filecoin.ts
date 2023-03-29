@@ -1,5 +1,19 @@
+import { Buffer } from 'buffer'
+
 import blake from 'blakejs'
 import base32Encode from 'base32-encode'
+
+function formatPrivateKey(hexPrivateKey: string) {
+  const base64Priv = Buffer.from(hexPrivateKey, 'hex').toString('base64')
+
+  const typedPriv = {
+    Type: 'secp256k1',
+    PrivateKey: base64Priv
+  }
+  const hexTypedPriv = Buffer.from(JSON.stringify(typedPriv)).toString('hex')
+
+  return hexTypedPriv
+}
 
 function derivedAddress(uncompressedPubkey: string) {
   const payload = blake.blake2b(Buffer.from(uncompressedPubkey, 'hex'), undefined, 20)
@@ -12,5 +26,6 @@ function derivedAddress(uncompressedPubkey: string) {
 }
 
 export default {
+  formatPrivateKey,
   derivedAddress,
 }

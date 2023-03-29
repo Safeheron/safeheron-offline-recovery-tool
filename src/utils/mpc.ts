@@ -78,6 +78,7 @@ export const recoverHDKeyFromMnemonics = (mnemonics: string[], chainCode?: strin
 }
 
 const isBTCLike = (blockchian: SUPPORTED_BLOCKCHAIN_TYPE): boolean => [BITCOIN_CHAIN, DASH_CHAIN, BITCOIN_CASH_CHAIN].includes(blockchian)
+const isFil = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) => FIL_CHAIN === blockchain
 
 export class ValidateAddressError extends Error {}
 
@@ -137,12 +138,15 @@ export const recoverDerivedCSV = (csv: RawCSVRow[], hdkey: MultiAlgoHDKey): Deri
       priv = padToLength(childKey.privateKey.toString(16), 32)
     }
 
-    const privateKey: string = isBTCLike(blockchain)
-      ? blockchainUtil.bitcoin.wifEncodePrivateKey(
-          priv,
-          network === 'mainnet'
-        )
-      : priv
+    let privateKey = priv
+    if (isBTCLike(blockchain)) {
+      privateKey = blockchainUtil.bitcoin.wifEncodePrivateKey(
+        priv,
+        network === 'mainnet'
+      )
+    } else if (isFil(blockchain)) {
+      privateKey = blockchainUtil.filecoin.formatPrivateKey(priv)
+    }
 
     validateAddress(
       blockchain,
