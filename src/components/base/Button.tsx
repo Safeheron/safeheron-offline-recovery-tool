@@ -27,25 +27,25 @@ const SButton = styled.button`
   min-width: 120px;
   height: 36px;
   border-radius: 4px;
-  border: 1px solid var(--brand-color);
+  border: 1px solid ${({ theme }) => theme.color.brand};
   background: none;
   cursor: pointer;
   padding: 0 14px;
   font-size: 12px;
 
   &.btn-default {
-    border-color: var(--brand-color);
-    color: var(--brand-color);
+    border-color: ${({ theme }) => theme.color.brand};
+    color: ${({ theme }) => theme.color.brand};
     margin-right: 10px;
 
     /* &:hover {
-        background-color: var(--brand-color);
+        background-color: ${({ theme }) => theme.color.brand};
         color: white;
       } */
   }
 
   &.btn-primary {
-    background-color: var(--brand-color);
+    background-color: ${({ theme }) => theme.color.brand};
     color: white;
 
     &[disabled] {
@@ -60,8 +60,8 @@ const SButton = styled.button`
 export const HomeButton = styled.div`
   width: 220px;
   height: 45px;
-  background-color: var(--brand-color);
-  box-shadow: 0 2px 0 #0c9d83;
+  background-color: ${({ theme }) => theme.color.brand};
+  box-shadow: 0 2px 0 ${({ theme }) => theme.color.brand}B3;
   border-radius: 4px;
   display: flex;
   align-items: center;

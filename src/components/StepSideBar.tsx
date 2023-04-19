@@ -23,44 +23,47 @@ const CommonSideStep: FC<Props> = ({ stepIndex, stepList, title, desc }) => {
         <p>{desc}</p>
       </div>
       <ul className="step-list">
-        {stepList.map((v, i) => (v.value ? (
-          <li className={stepIndex >= i ? 'active' : ''} key={v.key}>
-            <span>{v.value}</span>
-          </li>
-          ) : null))}
+        {stepList.map((v, i) =>
+          v.value ? (
+            <li className={stepIndex >= i ? 'active' : ''} key={v.key}>
+              <span>{v.value}</span>
+            </li>
+          ) : null
+        )}
       </ul>
     </Wrapper>
   )
 }
 
 const Wrapper = styled.div`
-  background-color: var(--bg-color);
+  background-color: ${({ theme }) => theme.color.bg};
   width: 233px;
   height: 100%;
-  padding-left: 27px;
+  padding-left: 20px;
+  padding-right: 10px;
 
   .header {
     padding-top: 27px;
     h1 {
       font-weight: 500;
       color: black;
-      font-size: 14px;
+      font-size: 12px;
       letter-spacing: 1px;
       padding-bottom: 4px;
     }
 
     p {
       font-size: 12px;
+      margin-top: 4px;
     }
   }
 
   .step-list {
-    margin-top: 60px;
+    margin-top: 40px;
     font-size: 12px;
 
     li {
       display: flex;
-      align-items: center;
       margin-bottom: 20px;
 
       &::before {
@@ -70,6 +73,7 @@ const Wrapper = styled.div`
         background-color: #d6d6d6;
         border-radius: 50%;
         margin-right: 8px;
+        margin-top: 5px;
       }
       span {
         flex: 1;
@@ -78,28 +82,7 @@ const Wrapper = styled.div`
       &.active {
         font-weight: 500;
         &::before {
-          background-color: var(--brand-color);
-        }
-      }
-    }
-  }
-
-  &.en-US {
-    padding-left: 20px;
-    .header {
-      h1 {
-        font-size: 12px;
-      }
-      p {
-        margin-top: 4px;
-      }
-    }
-
-    .step-list {
-      li {
-        align-items: flex-start;
-        &::before {
-          margin-top: 5px;
+          background-color: ${({ theme }) => theme.color.primary};
         }
       }
     }
