@@ -5,12 +5,13 @@ import { WebviewWindow } from '@tauri-apps/api/window'
 
 import StepContainer from '@/views/verify/components/StepContainer'
 import { useTranslation } from '@/i18n'
+import { brandName } from '@/configs'
 
 export interface XPubVerifyProps {
   data: {
     ed25519PubKey: string
     secp256k1PubKey: string
-  },
+  }
   prev: () => void
 }
 
@@ -27,7 +28,7 @@ const XPubVerify: FC<XPubVerifyProps> = ({ prev, data }) => {
   }
   return (
     <StepContainer
-      desc={t('Verify.XPubVerify.desc')}
+      desc={t('Verify.XPubVerify.desc', { x: brandName })}
       next={handleSubmit}
       nextText={t('common.done')}
       prev={prev}

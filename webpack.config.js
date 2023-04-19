@@ -13,7 +13,7 @@ module.exports = {
     clean: true,
     path: path.resolve(__dirname, 'dist'),
     filename: '[name].[contenthash].js',
-    pathinfo: true
+    pathinfo: true,
   },
   devtool: isDev ? 'eval-source-map' : 'hidden-source-map',
   target: 'web',
@@ -43,14 +43,14 @@ module.exports = {
     alias: {
       '@': path.resolve('src'),
       '@img': path.resolve('src/assets/images'),
-      buffer: require.resolve('buffer')
+      buffer: require.resolve('buffer'),
     },
     fallback: {
       // process: require.resolve('process/browser'),
       buffer: require.resolve('buffer/'),
       crypto: require.resolve('crypto-browserify'),
       stream: require.resolve('stream-browserify'),
-      events: require.resolve('events/')
+      events: require.resolve('events/'),
     },
   },
   plugins: [

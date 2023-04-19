@@ -1,9 +1,9 @@
 import styled from 'styled-components'
 import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 
 import { HomeButton } from '@/components/base/Button'
 import { useTranslation, LanguageEnum, LanguageMap, LANGUAGE_KEY } from '@/i18n'
-import bg from '@img/bg.png'
 import mnemonic from '@img/mnemonic@2x.png'
 import recover from '@img/recover@2x.png'
 import arrow from '@img/arrow@2x.png'
@@ -56,8 +56,8 @@ const Home = () => {
 
 const Wrapper = styled.div`
   height: 100%;
-  background: url(${bg}) bottom right no-repeat;
-  padding: 155px 75px;
+  background: url(${({ theme }) => theme.img.bg}) bottom right no-repeat;
+  padding: 155px 75px 0;
 
   position: relative;
   .change-lang {
@@ -85,13 +85,14 @@ const Wrapper = styled.div`
       text-align: center;
       border-radius: 2px;
       border: 1px solid #eaeaea;
+      background-color: white;
 
       li {
         min-width: 76px;
         line-height: 24px;
 
         &:hover {
-          background-color: #eefbf9;
+          background-color: ${({ theme }) => theme.color.hover};
         }
       }
     }

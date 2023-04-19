@@ -1,7 +1,7 @@
 import i18n from 'i18next'
 import { useTranslation, initReactI18next } from 'react-i18next'
 
-import ZhCn from '@/locales/zh-CN.json'
+import zhCn from '@/locales/zh-CN.json'
 import enUS from '@/locales/en-US.json'
 
 export { useTranslation }
@@ -15,21 +15,21 @@ export const LanguageMap: { [key: string]: string } = {
   [LanguageEnum.ZH_CN]: '简体中文',
 }
 
+const defaultLang = LanguageEnum.EN_US
+
 export const LANGUAGE_KEY = 'Accept-Language'
 export const getLanguage = (): LanguageEnum => {
   const localLang = localStorage.getItem(LANGUAGE_KEY) as LanguageEnum
   if (Object.keys(LanguageMap).includes(localLang)) {
     return localLang
   }
-  const broswerLang = navigator.language.startsWith('zh')
-    ? LanguageEnum.ZH_CN
-    : LanguageEnum.EN_US
+  const broswerLang = defaultLang
   return broswerLang
 }
 const locale = getLanguage()
 const resources = {
   [LanguageEnum.EN_US]: { translation: { ...enUS } },
-  [LanguageEnum.ZH_CN]: { translation: { ...ZhCn } },
+  [LanguageEnum.ZH_CN]: { translation: { ...zhCn } },
 }
 
 i18n

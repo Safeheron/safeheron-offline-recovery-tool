@@ -13,8 +13,8 @@ const Textarea = styled.textarea`
   color: var(--text-color);
 
   &:focus-visible {
-    border-color: var(--brand-color);
-    box-shadow: 0 0 0 1px var(--brand-color);
+    border-color: ${({ theme }) => theme.color.brand};
+    box-shadow: 0 0 0 1px ${({ theme }) => theme.color.brand};
   }
 
   &::placeholder {

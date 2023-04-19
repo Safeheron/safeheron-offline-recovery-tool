@@ -29,7 +29,7 @@
       "msg": "Chaincode shall be formatted correctly"
     },
     "XPubVerify": {
-      "desc": "Compare the public key compounded of 3 private key shard's public keys below with the full public key (Me-Team Info) in Safeheron App. If they are consistent, the verification is done. If they are inconsistent, please check whether the recovery phrase for generating the private key shard's public key is correct.",
+      "desc": "Compare the public key compounded of 3 private key shard's public keys below with the full public key (Me-Team Info) in {x} App. If they are consistent, the verification is done. If they are inconsistent, please check whether the recovery phrase for generating the private key shard's public key is correct.",
       "error": "Wrong computation of the extended public key. Check whether the private key shard's public key and Chaincode are correct",
       "errorV2": "Extended Public Key Computation Error: Please check if the public key of the private key shard is correct."
     }

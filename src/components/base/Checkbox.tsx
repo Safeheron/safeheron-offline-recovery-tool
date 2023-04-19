@@ -67,8 +67,8 @@ const SCheckbox = styled.div`
     }
 
     &.checked {
-      background-color: var(--brand-color);
-      border-color: var(--brand-color);
+      background-color: ${({ theme }) => theme.color.brand};
+      border-color: ${({ theme }) => theme.color.brand};
 
       &::after {
         opacity: 1;
@@ -79,7 +79,7 @@ const SCheckbox = styled.div`
 
   &:hover {
     .input-inner {
-      border-color: var(--brand-color);
+      border-color: ${({ theme }) => theme.color.brand};
     }
   }
   input {

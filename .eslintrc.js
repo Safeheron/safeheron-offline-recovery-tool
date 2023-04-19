@@ -52,6 +52,8 @@ module.exports = {
     'implicit-arrow-linebreak': 'off',
     'no-restricted-syntax': 'off',
     'max-len': 'off',
+    'no-confusing-arrow': 'off',
+    'function-paren-newline': 'off',
 
     'react/jsx-filename-extension': [
       0,
