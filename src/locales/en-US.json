@@ -42,7 +42,7 @@
     "part3": "Third",
     "copy": "Copy",
     "copyed": "Copied",
-    "online": "For your assets security, please disconnect to the Internet(including close VPN) to proceed",
+    "online": "For your assets security, please disconnect to the Internet (including close VPN and VM) to proceed",
     "done": "Done",
     "choose": "Choose"
   },
@@ -70,7 +70,7 @@
       "recoverHDKeyErrorV2": "Recovery Failed: Please confirm that the recovery phrase is correct.",
       "validateAddress": "Data File Verification Failure: Please check if the data file is correct.",
       "recoverPrivateKeyError": "Subkey Recovery Failed",
-      "export": "Export te1"
+      "export": "Export"
     },
     "ImportFile": {
       "title": "Import Corresponding Wallet Data File",
