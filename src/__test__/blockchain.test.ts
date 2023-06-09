@@ -114,3 +114,12 @@ test('Filecoin address derive', () => {
   expect(mainnetAddr).toEqual(data.address)
   expect(testnetAddr).toEqual(data.testnetAddr)
 })
+
+test('Sui address derive', () => {
+  const data = {
+    pubkeyHex: '18d5ff8840041dd386461490b344051c725c88b34f3c9605349abc6a21fd7512',
+    address: '0x6eb852318b085b972666b1a9a8fe9396379795452a03b7de80dcdc09b561469f',
+  }
+  const [addr] = blockchainUtil.sui.derivedAddress(data.pubkeyHex)
+  expect(addr).toEqual(data.address)
+})
