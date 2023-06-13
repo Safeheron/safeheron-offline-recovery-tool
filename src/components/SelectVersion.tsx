@@ -1,4 +1,11 @@
-import React, { FC, useCallback, useState, ReactNode, useMemo, useContext } from 'react'
+import React, {
+  FC,
+  useCallback,
+  useState,
+  ReactNode,
+  useMemo,
+  useContext,
+} from 'react'
 import styled from 'styled-components'
 import { useNavigate } from 'react-router-dom'
 
@@ -28,10 +35,13 @@ const SelectVersion: FC<Props> = ({ children }) => {
   const onSelectV1 = useCallback(() => setVersion('v1'), [])
   const onSelectV2 = useCallback(() => setVersion('v2'), [])
   const onPrev = useCallback(() => navigate('/'), [])
-  const contextValue = useMemo(() => ({
-    version,
-    resetVersion: () => setVersion(''),
-  }), [version])
+  const contextValue = useMemo(
+    () => ({
+      version,
+      resetVersion: () => setVersion(''),
+    }),
+    [version]
+  )
 
   if (version) {
     return (
@@ -45,9 +55,7 @@ const SelectVersion: FC<Props> = ({ children }) => {
     <Wrapper>
       <Main>
         <Title>{t('selectVersion.title')}</Title>
-        <Desc lang={i18n.language}>
-          {t('selectVersion.desc')}
-        </Desc>
+        <Desc lang={i18n.language}>{t('selectVersion.desc')}</Desc>
         <ButtonGroup>
           <HomeButton onClick={onSelectV1}>
             {t('selectVersion.v1Btn')}
@@ -87,7 +95,7 @@ const Desc = styled.p`
   font-size: 12px;
   line-height: 20px;
   color: #e97207;
-  margin-bottom: 50px; 
+  margin-bottom: 50px;
 
   &[lang='en-US'] {
     line-height: 14px;
@@ -98,10 +106,11 @@ const ButtonGroup = styled.div`
   display: flex;
   justify-content: space-between;
   padding: 0 36px;
-  
+
   div {
     justify-content: center;
     padding-left: 0;
+    width: 220px;
   }
 `
 

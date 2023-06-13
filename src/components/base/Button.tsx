@@ -58,7 +58,6 @@ const SButton = styled.button`
 `
 
 export const HomeButton = styled.div`
-  width: 220px;
   height: 45px;
   background-color: ${({ theme }) => theme.color.brand};
   box-shadow: 0 2px 0 ${({ theme }) => theme.color.brand}B3;
@@ -68,8 +67,10 @@ export const HomeButton = styled.div`
   font-size: 14px;
   margin-bottom: 40px;
   color: white;
-  padding-left: 32px;
   cursor: pointer;
+  padding-left: 10px;
+  width: 260px;
+  letter-spacing: -0.5px;
 
   .icon {
     width: 21px;
@@ -77,10 +78,10 @@ export const HomeButton = styled.div`
     margin-right: 13px;
   }
 
-  &.en-US {
-    padding-left: 10px;
-    width: 260px;
-    letter-spacing: -0.5px;
+  &.zh-CN {
+    padding-left: 32px;
+    width: 220px;
+    letter-spacing: 0;
   }
 `
 
