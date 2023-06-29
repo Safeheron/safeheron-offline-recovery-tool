@@ -2,6 +2,17 @@ import { expect, test } from '@jest/globals'
 
 import { csvParse, csvStringify, MissDataError, MissRequiredFieldError, UnsupportBlockChainError } from '../utils/csv'
 
+const csvStrWithWhitespace =
+`Account Name,Blockchain Type,Network,Address,Address Type,HD Path
+钱包 1, EVM ,mainnet,0xd1f642c3d03f16549194eAee4067F80A8475f5A5,DEFAULT,m/44/666/0/0/0
+钱包 1,Bitcoin,testnet,mowfuk1wB8ViPjM7QdzWt2d6VW7Ex5fS1S,P2PKH,m/44/666/0/0/0
+钱包 1,Bitcoin,testnet,tb1qt3km5chpmh3gz4cmad6egqkj3tpwwyw93muzsa,P2WPKH,m/44/666/0/0/0
+钱包 1,Dash,mainnet,yUkATtfHmMw87JPd7oekwfWuk8abXQaTu3,P2PKH,m/44/666/0/0/0
+钱包 1,TRON,testnet,TV7PEemMu6oB4MuZN49YJrYtCdrneUxAHo,DEFAULT,m/44/666/0/0/0
+钱包 2,EVM,mainnet,0x250C14604742C5759d1ce50ccbFc1C3A904314AC,DEFAULT,m/44/666/1/0/0
+
+`
+
 const csvStr =
 `Account Name,Blockchain Type,Network,Address,Address Type,HD Path
 钱包 1,EVM,mainnet,0xd1f642c3d03f16549194eAee4067F80A8475f5A5,DEFAULT,m/44/666/0/0/0
@@ -85,7 +96,7 @@ const csvArr = [
 ]
 
 test('csv string to array', () => {
-  const arr = csvParse(csvStr)
+  const arr = csvParse(csvStrWithWhitespace)
   expect(arr).toMatchObject(csvArr)
 })
 
