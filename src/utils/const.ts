@@ -13,7 +13,7 @@ export const DASH_CHAIN = 'Dash'
 export const TRON_CHAIN = 'TRON'
 export const NEAR_CHAIN = 'NEAR'
 export const FIL_CHAIN = 'Filecoin'
-export const SUI_CHAIN = 'SUI'
+export const SUI_CHAIN = 'Sui'
 
 export const SUPPORTED_BLOCKCHAIN = [EVM_CHAIN, BITCOIN_CHAIN, BITCOIN_CASH_CHAIN, DASH_CHAIN, TRON_CHAIN, NEAR_CHAIN, FIL_CHAIN, SUI_CHAIN] as const
 

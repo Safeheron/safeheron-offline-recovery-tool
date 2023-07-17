@@ -14,15 +14,15 @@ If everything is installed successfully, you can run the cli.
 npm run transfer
 
 // method two
-NEAR_NO_LOGS=true NO_DEPRECATION=* node ./cli/index.js transfer
+node ./cli/index.js transfer
 
 // method three
-NEAR_NO_LOGS=true NO_DEPRECATION=* node ./cli/index.js transfer <sender> <receiver> <amount> -p <privateKey> -t <ftoken> -y
+node ./cli/index.js transfer <blockchain> <sender> <receiver> <amount> -k <privateKey> -t <ftoken> -y
 ```
 ### Arguments
 ```bash
-sender    # value is sender account
-receiver  # value is receiver account
+sender    # value is sender address 
+receiver  # value is receiver address 
 amount    # value is transfer amount
 ```
 
@@ -30,6 +30,6 @@ amount    # value is transfer amount
 ```bash
 --privateKey, -k  # value is private key
 --network, -n     # value is mainnet or testnet
---token, -t       # value is fungible token contract address. Default is NEAR (Optional)
+--token, -t       # value is fungible token contract address. Default is native token (Optional)
 --yes, -y         # automatic yes to prompts. (Optional)
 ```

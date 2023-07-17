@@ -1,6 +1,6 @@
 {
   "name": "Offline-Recovery-Tool",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "author": "Safeheron",
   "scripts": {
@@ -12,7 +12,7 @@
     "test": "jest --silent",
     "lint": "eslint src",
     "prepare": "husky install",
-    "transfer": " NEAR_NO_LOGS=true NO_DEPRECATION=* node ./cli/index.js transfer"
+    "transfer": "node ./cli/index.js transfer"
   },
   "commitlint": {
     "extends": [
@@ -25,6 +25,7 @@
     ]
   },
   "dependencies": {
+    "@mysten/sui.js": "^0.35.1",
     "@psf/bch-js": "^6.4.5",
     "@safeheron/crypto-bip32": "^1.0.0",
     "@safeheron/master-key-derive": "^1.0.1",
@@ -32,6 +33,7 @@
     "antd": "^5.1.5",
     "assert": "^2.0.0",
     "base32-encode": "^1.2.0",
+    "bignumber.js": "^9.1.1",
     "bip39": "^3.0.4",
     "bitcoinjs-lib": "^6.0.1",
     "blakejs": "^1.2.1",
