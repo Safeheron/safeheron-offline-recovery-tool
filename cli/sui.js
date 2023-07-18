@@ -52,12 +52,18 @@ class MPCSigner extends SignerWithProvider {
 }
 
 const transfer = async config => {
-  const { amount, receiver, network, privateKey } = config
+  const { amount, receiver, network, privateKey, rpc } = config
+  let connect
+  if (rpc) {
+    connect = new Connection({
+      fullnode: rpc,
+    })
+  } else {
+    connect = network === 'mainnet' ? mainnetConnection : testnetConnection
+  }
   const signer = new MPCSigner(
     privateKey,
-    new JsonRpcProvider(
-      network === 'mainnet' ? mainnetConnection : testnetConnection
-    )
+    new JsonRpcProvider(connect)
   )
   const tx = new TransactionBlock()
   const [coin] = tx.splitCoins(tx.gas, [tx.pure(parseAmount(amount, 9))])
@@ -70,12 +76,21 @@ const transfer = async config => {
 }
 
 const ftTransfer = async config => {
-  const { amount, receiver, network, privateKey, ftoken } = config
+  const { amount, receiver, network, privateKey, ftoken, rpc } = config
 
-  const provider = new JsonRpcProvider(
-    network === 'mainnet' ? mainnetConnection : testnetConnection
+  let connect
+  if (rpc) {
+    connect = new Connection({
+      fullnode: rpc,
+    })
+  } else {
+    connect = network === 'mainnet' ? mainnetConnection : testnetConnection
+  }
+  const provider = new JsonRpcProvider(connect)
+  const signer = new MPCSigner(
+    privateKey,
+    provider,
   )
-  const signer = new MPCSigner(privateKey, provider)
   const [coinMetadata, objects] = await Promise.all([
     getCoinMetadata(provider, ftoken),
     getTargetCoinObjects(provider, ftoken, signer.getAddress())

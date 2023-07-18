@@ -146,6 +146,7 @@ const prompt = async config => {
   network:    ${result.network}
   token:      ${result.ftoken || getNativeToken(result.blockchain)}
   privateKey: ${result.privateKey}
+  ${result.rpc ? `rpcURL:     ${result.rpc}` : ''}
 `,
         type: 'confirm',
       },
@@ -202,6 +203,7 @@ const main = async () => {
     .argument('[amount]', 'amount')
     .option('-k, --privateKey <privateKey>', 'private key')
     .option('-n, --network <network>', 'mainnet or testnet')
+    .option('-r, --rpc <rpc>', 'custom RPC URL. (Optional)')
     .option('-y, --yes', 'automatic yes to prompts')
     .option(
       '-t, --ftoken <ftoken>',

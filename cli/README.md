@@ -17,7 +17,7 @@ npm run transfer
 node ./cli/index.js transfer
 
 // method three
-node ./cli/index.js transfer <blockchain> <sender> <receiver> <amount> -k <privateKey> -t <ftoken> -y
+node ./cli/index.js transfer <blockchain> <sender> <receiver> <amount> -k <privateKey> -t <ftoken> -r <rpc> -y
 ```
 ### Arguments
 ```bash
@@ -31,5 +31,6 @@ amount    # value is transfer amount
 --privateKey, -k  # value is private key
 --network, -n     # value is mainnet or testnet
 --token, -t       # value is fungible token contract address. Default is native token (Optional)
+--rpc, -r         # value is a custom RPC URL. (Optional)
 --yes, -y         # automatic yes to prompts. (Optional)
 ```

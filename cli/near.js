@@ -66,12 +66,10 @@ class MPCSigner extends nearAPI.Signer {
 }
 
 const createAccount = async config => {
-  const { sender, network, privateKey } = config
+  const { sender, network, privateKey, rpc } = config
   const near = await nearAPI.connect({
     networkId: network,
-    nodeUrl: `https://rpc.${network}.near.org`,
-    walletUrl: `https://wallet.${network}.near.org`,
-    helperUrl: `https://helper.${network}.near.org`,
+    nodeUrl: rpc || `https://rpc.${network}.near.org`,
     signer: new MPCSigner(privateKey),
   })
   return near.account(sender)
