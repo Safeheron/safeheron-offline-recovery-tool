@@ -67,9 +67,15 @@ class MPCSigner extends nearAPI.Signer {
 
 const createAccount = async config => {
   const { sender, network, privateKey, rpc } = config
+  let nodeUrl
+  if (network === 'mainnet') {
+    nodeUrl = 'https://rpc.ankr.com/near'
+  } else {
+    nodeUrl = 'https://rpc.eu-north-1.gateway.fm/v4/near/non-archival/testnet'
+  }
   const near = await nearAPI.connect({
     networkId: network,
-    nodeUrl: rpc || `https://rpc.${network}.near.org`,
+    nodeUrl: rpc || nodeUrl,
     signer: new MPCSigner(privateKey),
   })
   return near.account(sender)
