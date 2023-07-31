@@ -1,5 +1,8 @@
 /* eslint-disable no-console */
 /* eslint-disable camelcase */
+process.env.NEAR_NO_LOGS = true
+process.env.NO_DEPRECATION = '*'
+
 const nearAPI = require('near-api-js')
 const sha256 = require('js-sha256')
 const fetch = require('node-fetch')
@@ -7,6 +10,9 @@ const {
   ed25519_sign,
   ed25519_get_pubkey_hex,
 } = require('@safeheron/master-key-derive')
+const { TypedError } = require('near-api-js/lib/providers')
+
+const { parseAmount, logReceipt } = require('./utils')
 
 // solve the near-js-api function_call only returns SuccessValue
 // this is a hack that may break with near-api-js upgrades
@@ -60,12 +66,16 @@ class MPCSigner extends nearAPI.Signer {
 }
 
 const createAccount = async config => {
-  const { sender, network, privateKey } = config
+  const { sender, network, privateKey, rpc } = config
+  let nodeUrl
+  if (network === 'mainnet') {
+    nodeUrl = 'https://rpc.ankr.com/near'
+  } else {
+    nodeUrl = 'https://rpc.eu-north-1.gateway.fm/v4/near/non-archival/testnet'
+  }
   const near = await nearAPI.connect({
     networkId: network,
-    nodeUrl: `https://rpc.${network}.near.org`,
-    walletUrl: `https://wallet.${network}.near.org`,
-    helperUrl: `https://helper.${network}.near.org`,
+    nodeUrl: rpc || nodeUrl,
     signer: new MPCSigner(privateKey),
   })
   return near.account(sender)
@@ -76,15 +86,8 @@ const transfer = async config => {
   const account = await createAccount(config)
   const amt = nearAPI.utils.format.parseNearAmount(String(amount))
   const result = await account.sendMoney(receiver, amt)
-  console.log('A transactions has been successfully sent!')
-  console.log(
-    '--------------------------------------------------------------------------------------------'
-  )
-  console.log('Open link below to see transaction in NEAR explorer')
-  console.log(`https://explorer.${network}.near.org/transactions/${result.transaction.hash}`)
-  console.log(
-    '--------------------------------------------------------------------------------------------'
-  )
+  const explorer = `https://explorer.${network}.near.org/transactions/${result.transaction.hash}`
+  logReceipt('NEAR', explorer)
 }
 
 const ftTransfer = async config => {
@@ -111,24 +114,25 @@ const ftTransfer = async config => {
   const hash = await contract.ft_transfer({
     args: {
       receiver_id: receiver,
-      amount: String(10 ** metadata.decimals * amount),
+      amount: parseAmount(amount, metadata.decimals).toString(),
     },
     amount: 1,
   })
   if (hash) {
-    console.log('A transactions has been successfully sent!')
-    console.log(
-      '--------------------------------------------------------------------------------------------'
-    )
-    console.log('Open link below to see transaction in NEAR explorer')
-    console.log(`https://explorer.${network}.near.org/transactions/${hash}`)
-    console.log(
-      '--------------------------------------------------------------------------------------------'
-    )
+    const explorer = `https://explorer.${network}.near.org/transactions/${hash}`
+    logReceipt('NEAR', explorer)
+  }
+}
+
+const handleException = err => {
+  console.log(err)
+  if (err instanceof TypedError && err.type === 'RetriesExceeded') {
+    return 'RPC connection failed. Please try again later or change the RPC URL (nodeUrl)'
   }
 }
 
 module.exports = {
   transfer,
   ftTransfer,
+  handleException,
 }

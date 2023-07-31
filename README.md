@@ -40,6 +40,10 @@ Make sure you have Rust and NodeJS environment installed.
 1. git checkout -b <YOUR_BRANCH_NAME>
 2. npm run dev
 
+## Distribution
+1. [code signing and notarization](https://tauri.app/v1/guides/distribution/sign-macos/)
+2. npm run build
+
 ## Contribution
 
 - make sure `npm test` and `npm run lint` passes.

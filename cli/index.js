@@ -1,8 +1,29 @@
+/* eslint-disable no-console */
 const { Command } = require('commander')
 const inquirer = require('inquirer')
 const ora = require('ora')
 
-const near = require('./near')
+const getNativeToken = blockchain => {
+  switch (blockchain) {
+    case 'sui':
+      return 'SUI'
+    case 'near':
+      return 'NEAR'
+    default:
+      return ''
+  }
+}
+
+const getBlockChainIns = blockchain => {
+  switch (blockchain) {
+    case 'sui':
+      return require('./sui')
+    case 'near':
+      return require('./near')
+    default:
+      return {}
+  }
+}
 
 const validate = (name, value) => {
   switch (name) {
@@ -31,20 +52,23 @@ const transformer = value => {
 }
 
 const prompt = async config => {
-  const {
-    network,
-    sender,
-    privateKey,
-    receiver,
-    amount,
-    ftoken,
-  } = config
+  const { blockchain, network, sender, privateKey, receiver, amount, ftoken } =
+    config
   const questions = []
+
+  if (blockchain !== 'sui' && blockchain !== 'near') {
+    questions.push({
+      name: 'blockchain',
+      message: 'select a blockchain',
+      type: 'list',
+      choices: ['sui', 'near'],
+    })
+  }
 
   if (!sender) {
     questions.push({
       name: 'sender',
-      message: 'enter a sender account',
+      message: 'enter a sender address',
       type: 'input',
     })
   }
@@ -52,7 +76,7 @@ const prompt = async config => {
   if (!receiver) {
     questions.push({
       name: 'receiver',
-      message: 'enter a receiver account',
+      message: 'enter a receiver address',
       type: 'input',
     })
   }
@@ -92,7 +116,8 @@ const prompt = async config => {
   if (!ftoken && questions.length > 0) {
     questions.push({
       name: 'ftoken',
-      message: 'enter a fungible token contract address (Default is NEAR)',
+      message:
+        'enter a fungible token contract address (Default is native token)',
       type: 'input',
     })
   }
@@ -110,19 +135,22 @@ const prompt = async config => {
   }
 
   if (!config.yes) {
-    const res = await inquirer.prompt([{
-      name: 'ok',
-      message:
-`Please confirm the transfer information 
+    const res = await inquirer.prompt([
+      {
+        name: 'ok',
+        message: `Please confirm the transfer information 
+  blockchain: ${result.blockchain}
   sender:     ${result.sender}
   receiver:   ${result.receiver}
   amount:     ${result.amount}
   network:    ${result.network}
-  token:      ${result.ftoken || 'NEAR'}
+  token:      ${result.ftoken || getNativeToken(result.blockchain)}
   privateKey: ${result.privateKey}
+  ${result.rpc ? `rpcURL:     ${result.rpc}` : ''}
 `,
-      type: 'confirm',
-    }])
+        type: 'confirm',
+      },
+    ])
     if (!res.ok) {
       process.exit()
     }
@@ -131,8 +159,9 @@ const prompt = async config => {
   return result
 }
 
-const action = async (sender, receiver, amount, options) => {
+const action = async (blockchain, sender, receiver, amount, options) => {
   const config = await prompt({
+    blockchain,
     sender,
     receiver,
     amount,
@@ -140,15 +169,17 @@ const action = async (sender, receiver, amount, options) => {
   })
   const ins = ora('transfer in progress\n')
   ins.start()
+  const blockchainIns = getBlockChainIns(config.blockchain)
   try {
     if (!config.ftoken) {
-      await near.transfer(config)
+      await blockchainIns.transfer(config)
     } else {
-      await near.ftTransfer(config)
+      await blockchainIns.ftTransfer(config)
     }
     ins.succeed('transfer completed')
   } catch (err) {
-    ins.fail('transfer failed. Please check your parameters')
+    const msg = blockchainIns.handleException(err)
+    ins.fail(msg || 'transfer failed. Please check your parameters')
   }
 }
 
@@ -156,19 +187,28 @@ const main = async () => {
   const program = new Command()
 
   program
-    .name('shnear')
-    .description('CLI for near transactions')
-    .version('0.1.0')
+    .name('sh')
+    .description('CLI for safeheron transactions')
+    .version('0.2.0')
 
-  program.command('transfer')
-    .description('make a NEAR or other fungible token transfer')
-    .argument('[sender]', 'sender account')
-    .argument('[receiver]', 'receiver account')
-    .argument('[amount]', 'near amount')
+  program
+    .command('transfer')
+    .description('make a NEAR/SUI or other fungible token transfer')
+    .argument(
+      '[blockchain]',
+      'blockchain. currently supports SUI and NEAR chains'
+    )
+    .argument('[sender]', 'sender address')
+    .argument('[receiver]', 'receiver address')
+    .argument('[amount]', 'amount')
     .option('-k, --privateKey <privateKey>', 'private key')
     .option('-n, --network <network>', 'mainnet or testnet')
+    .option('-r, --rpc <rpc>', 'custom RPC URL. (Optional)')
     .option('-y, --yes', 'automatic yes to prompts')
-    .option('-t, --ftoken <ftoken>', 'fungible token contract address. Default is NEAR')
+    .option(
+      '-t, --ftoken <ftoken>',
+      'fungible token contract address. (Default is native token)'
+    )
     .action(action)
 
   await program.parseAsync()

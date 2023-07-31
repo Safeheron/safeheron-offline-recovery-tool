@@ -5,6 +5,7 @@ import dash from './dash'
 import tron from './tron'
 import near from './near'
 import filecoin from './filecoin'
+import sui from './sui'
 
 export default {
   bitcoin,
@@ -14,4 +15,5 @@ export default {
   tron,
   near,
   filecoin,
+  sui,
 }

@@ -27,6 +27,8 @@ export class UnsupportBlockChainError extends Error {}
 export function csvParse<T>(csvStr: string): T[] {
   const parsedData = parse(csvStr, {
     columns: true,
+    trim: true,
+    skip_empty_lines: true,
   })
 
   if (!parsedData || parsedData.length === 0) {

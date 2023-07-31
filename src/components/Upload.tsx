@@ -35,7 +35,7 @@ const Upload: FC<Props> = ({ onChange, file }) => {
 
   return (
     <Wrapper>
-      {file?.name}
+      <div className="upload-filename">{file?.name}</div>
       <a className="link" onClick={handleClick}>
         {t('common.choose')}
       </a>
@@ -58,9 +58,12 @@ const Wrapper = styled.div`
     display: none;
   }
 
-  .link {
-    position: absolute;
-    right: 15px;
+  .upload-filename {
+    flex: 1;
+  }
+
+  .upload-filename + .link {
+    flex: none;
   }
 `
 
