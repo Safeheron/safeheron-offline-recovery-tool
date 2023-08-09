@@ -17,13 +17,14 @@ npm run transfer
 node ./cli/index.js transfer
 
 // method three
-node ./cli/index.js transfer <blockchain> <sender> <receiver> <amount> -k <privateKey> -t <ftoken> -r <rpc> -y
+node ./cli/index.js transfer <blockchain> <sender> <receiver> <amount> -k <privateKey> -t <ftoken> -n <mainnet | testnet> -r <rpc> -y
 ```
 ### Arguments
 ```bash
-sender    # value is sender address 
-receiver  # value is receiver address 
-amount    # value is transfer amount
+blockchain # value is sui or near
+sender     # value is sender address 
+receiver   # value is receiver address 
+amount     # value is transfer amount
 ```
 
 ### Flags
