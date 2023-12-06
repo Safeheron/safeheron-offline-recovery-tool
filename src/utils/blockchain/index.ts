@@ -6,6 +6,7 @@ import tron from './tron'
 import near from './near'
 import filecoin from './filecoin'
 import sui from './sui'
+import aptos from './aptos'
 
 export default {
   bitcoin,
@@ -16,4 +17,5 @@ export default {
   near,
   filecoin,
   sui,
+  aptos,
 }

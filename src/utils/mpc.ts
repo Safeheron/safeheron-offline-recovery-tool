@@ -22,6 +22,7 @@ import {
   TRON_CHAIN,
   FIL_CHAIN,
   SUI_CHAIN,
+  APTOS_CHAIN,
 } from './const'
 
 export interface MultiAlgoHDKey {
@@ -111,6 +112,9 @@ const validateAddress = (chainType: SUPPORTED_BLOCKCHAIN_TYPE, publicKeyPoint: a
       break
     case SUI_CHAIN:
       derivedAddress = blockchainUtil.sui.derivedAddress(pubhex)
+      break
+    case APTOS_CHAIN:
+      derivedAddress = blockchainUtil.aptos.derivedAddress(pubhex)
       break
     default:
       break
