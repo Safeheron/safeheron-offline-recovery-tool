@@ -4,7 +4,7 @@ import { ChangeEvent, FC, useState } from 'react'
 import ErrorMsg from './ErrorMsg'
 
 import { Textarea } from '@/components/base'
-import { mnemonicVerfiy } from '@/utils/verification'
+import { mnemonicVerfiy } from '@/utils/mnemonic'
 
 interface Props {
   onChange: (mneonicArr: string[]) => void
@@ -17,7 +17,8 @@ const MnemonicInput: FC<Props> = ({ rows, placeholder, onChange, verify }) => {
   const [mneonics, setMneonics] = useState<string[]>([])
   const [errMsg, setErrMsg] = useState('')
 
-  const mnemonicStr2Arr = (mnemonicStr: string): string[] => mnemonicStr.split(/\s+/).filter(v => !!v)
+  const mnemonicStr2Arr = (mnemonicStr: string): string[] =>
+    mnemonicStr.split(/\s+/).filter(v => !!v)
 
   const defaultVerify = (mneonicArr: string[]): string => {
     const msg = mnemonicVerfiy(mneonicArr)
@@ -40,7 +41,11 @@ const MnemonicInput: FC<Props> = ({ rows, placeholder, onChange, verify }) => {
   return (
     <>
       <Wrapper>
-        <Textarea rows={rows} placeholder={placeholder} onChange={handleChange} />
+        <Textarea
+          rows={rows}
+          placeholder={placeholder}
+          onChange={handleChange}
+        />
         <div className="num">{mneonics.length} / 24</div>
       </Wrapper>
       <ErrorMsg msg={errMsg} />
