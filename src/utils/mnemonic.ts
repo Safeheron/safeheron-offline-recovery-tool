@@ -10,7 +10,12 @@ export const mnemonicVerfiy = (mnemonicArr: string[]): string => {
     return t('Recovery.Mnemonic.required')
   }
 
-  const illegalList = mnemonicArr.filter(v => !allWordListsEnglish.includes(v))
+  const illegalList = mnemonicArr.filter(v => {
+    if (v.length === 4) {
+      return !allWordListsEnglish.find(word => word.indexOf(v) === 0)
+    }
+    return !allWordListsEnglish.includes(v)
+  })
 
   if (illegalList.length > 0) {
     return t('Recovery.Mnemonic.illega')
@@ -22,3 +27,10 @@ export const mnemonicVerfiy = (mnemonicArr: string[]): string => {
 
   return ''
 }
+
+export const handleFourCharMnemonic = (mnemonicArr: string[]) => mnemonicArr.map(item => {
+    if (item.length === 4) {
+      return wordlists.english.find(word => word.indexOf(item) === 0) ?? item
+    }
+    return item
+  })

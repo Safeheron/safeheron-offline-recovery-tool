@@ -3,7 +3,7 @@ import { FC, useState } from 'react'
 import { Button } from '@/components/base'
 import MnemonicInput from '@/components/MnemonicInput'
 import { useTranslation } from '@/i18n'
-import { mnemonicVerfiy } from '@/utils/verification'
+import { handleFourCharMnemonic, mnemonicVerfiy } from '@/utils/mnemonic'
 
 interface Props {
   index: number
@@ -18,7 +18,8 @@ const MnemonicVerify: FC<Props> = ({ index, list, next, prev, onComplete }) => {
   const [mnemonic, setMnemonic] = useState('')
 
   const handleChange = (mnemonicArr: string[]) => {
-    setMnemonic(mnemonicArr.join(' '))
+    const arr = handleFourCharMnemonic(mnemonicArr)
+    setMnemonic(arr.join(' '))
   }
 
   const handleSubmit = () => {

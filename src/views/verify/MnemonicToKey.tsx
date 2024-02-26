@@ -9,7 +9,7 @@ import MnemonicInput from '@/components/MnemonicInput'
 import CopyInput from '@/components/CopyInput'
 import { LanguageEnum, useTranslation } from '@/i18n'
 import ChainCodeInput from '@/components/ChainCodeInput'
-import { mnemonicVerfiy } from '@/utils/verification'
+import { handleFourCharMnemonic, mnemonicVerfiy } from '@/utils/mnemonic'
 
 const MnemonicToKey = () => {
   const [searchParams] = useSearchParams()
@@ -42,14 +42,26 @@ const MnemonicToKey = () => {
     if (isEasterEggLogic(mnemonicArr)) {
       arr = mnemonicArr.slice(0, mnemonicArr.length - 1)
     }
+
+    arr = handleFourCharMnemonic(arr)
+
     setMnemonic(arr.join(' '))
     setPubkey('')
   }
 
   const handleSubmit = () => {
     try {
-      const secp256k1PubKey = mnemonicToExtendedPub(SigAlg.ECDSA_SECP256K1, alt.current, mnemonic, chainCode)
-      const ed25519PubKey = mnemonicToExtendedPub(SigAlg.EDDSA_ED25519, alt.current, mnemonic)
+      const secp256k1PubKey = mnemonicToExtendedPub(
+        SigAlg.ECDSA_SECP256K1,
+        alt.current,
+        mnemonic,
+        chainCode
+      )
+      const ed25519PubKey = mnemonicToExtendedPub(
+        SigAlg.EDDSA_ED25519,
+        alt.current,
+        mnemonic
+      )
       const formatedJson = JSON.stringify({
         secp256k1: secp256k1PubKey,
         ed25519: ed25519PubKey,
@@ -57,7 +69,9 @@ const MnemonicToKey = () => {
       setPubkey(formatedJson)
     } catch (err) {
       console.error('[mnemonicToExtendedPub ERROR]: ', err)
-      const k = chainCodeRequired ? 'Verify.MnemonicToKey.error' : 'Verify.MnemonicToKey.errorV2'
+      const k = chainCodeRequired
+        ? 'Verify.MnemonicToKey.error'
+        : 'Verify.MnemonicToKey.errorV2'
       setErrMsg(t(k))
     }
   }
@@ -90,9 +104,7 @@ const MnemonicToKey = () => {
           verify={verify}
         />
       </div>
-      {
-        chainCodeRequired && <ChainCodeInput onChange={setChainCode} />
-      }
+      {chainCodeRequired && <ChainCodeInput onChange={setChainCode} />}
       <p>{t('Verify.MnemonicToKey.pubkey')}</p>
       <CopyInput value={pubkey} />
       <div style={{ height: i18n.language === 'en-US' ? 30 : 50 }}>
