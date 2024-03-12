@@ -9,6 +9,10 @@ const getNativeToken = blockchain => {
       return 'SUI'
     case 'near':
       return 'NEAR'
+    case 'aptos':
+      return 'APT'
+    case 'solana':
+      return 'SOL'
     default:
       return ''
   }
@@ -20,6 +24,10 @@ const getBlockChainIns = blockchain => {
       return require('./sui')
     case 'near':
       return require('./near')
+    case 'aptos':
+      return require('./aptos')
+    case 'solana':
+      return require('./solana')
     default:
       return {}
   }
@@ -61,7 +69,7 @@ const prompt = async config => {
       name: 'blockchain',
       message: 'select a blockchain',
       type: 'list',
-      choices: ['sui', 'near'],
+      choices: ['sui', 'near', 'aptos', 'solana'],
     })
   }
 
@@ -193,10 +201,10 @@ const main = async () => {
 
   program
     .command('transfer')
-    .description('make a NEAR/SUI or other fungible token transfer')
+    .description('make a NEAR/SUI/APT or other fungible token transfer')
     .argument(
       '[blockchain]',
-      'blockchain. currently supports SUI and NEAR chains'
+      'blockchain. currently supports SUI/NEAR/APTOS chains'
     )
     .argument('[sender]', 'sender address')
     .argument('[receiver]', 'receiver address')

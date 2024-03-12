@@ -157,3 +157,15 @@ test('aptos address derivation', () => {
   const [addr] = blockchainUtil.aptos.derivedAddress(data.pubkeyHex)
   expect(addr).toEqual(data.address)
 })
+
+test('solana address derivation', () => {
+  const data = {
+    pubkeyHex:
+      '3a5c1615c31b1c129a9bb594f68ffe15cdaa9de52f4f379e8cb5928e58cbdb4a',
+    address:
+      '4vp679SrxuY27kn41dghJM32kqEeikbDNYSx9Tf1CgkR',
+  }
+
+  const [addr] = blockchainUtil.solana.derivedAddress(data.pubkeyHex)
+  expect(addr).toEqual(data.address)
+})
