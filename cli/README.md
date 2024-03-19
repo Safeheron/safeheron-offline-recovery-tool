@@ -1,4 +1,4 @@
-## Near transfer cli
+## CLI transfer tool
 ### Prerequisites
 The cli is built by NodeJS. So you must install NodeJS >= 16. Recommended [Node16.16.0](https://nodejs.org/dist/v16.16.0/) . 
 
