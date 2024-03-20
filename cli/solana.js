@@ -153,7 +153,7 @@ const createConnection = (network, rpc) => {
     connection = new Connection(
       network === 'mainnet'
         ? clusterApiUrl('mainnet-beta')
-        : clusterApiUrl('devnet')
+        : clusterApiUrl('testnet')
     )
   }
   return connection
