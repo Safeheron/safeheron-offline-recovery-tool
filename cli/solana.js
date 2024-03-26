@@ -29,6 +29,15 @@ const {
 
 const { logReceipt } = require('./utils')
 
+const solanaLogReceipt = explorer => {
+  logReceipt('Solana', explorer)
+  console.log('\x1b[33m%s', `
+Note: This does not mean that the transfer transaction was successfully confirmed. 
+Solana may drop transactions when the blocknetwork is congested. 
+If you never see the transaction information on the blockexplorer, please retry.
+  `)
+}
+
 const TOKEN_PROGRAM_ID = new PublicKey(
   'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
 )
@@ -185,7 +194,7 @@ const transfer = async config => {
   const explorer = `https://explorer.solana.com/tx/${txid}${
     network === 'mainnet' ? '' : '?cluster=devnet'
   }`
-  logReceipt('Solana', explorer)
+  solanaLogReceipt(explorer)
 }
 
 const ftTransfer = async config => {
@@ -236,7 +245,7 @@ const ftTransfer = async config => {
   const explorer = `https://explorer.solana.com/tx/${txid}${
     network === 'mainnet' ? '' : '?cluster=devnet'
   }`
-  logReceipt('Solana', explorer)
+  solanaLogReceipt(explorer)
 }
 
 const handleException = err => {
