@@ -69,13 +69,14 @@ const transfer = async config => {
 
   const signer = new MPCSigner(privateKey)
 
-  console.log('signer address:', signer.address)
-
   const transaction = await aptos.transferCoinTransaction({
     sender: signer.address,
     recipient: receiver,
     // use BigNumber because "10 ** 8 * 1.1 === 110000000.00000001"
     amount: BigInt(new BigNumber(10 ** 8).multipliedBy(amount).toString()),
+    options: {
+      maxGasAmount: 1006,
+    },
   })
 
   const senderAuthenticator = await aptos.sign({ signer, transaction })
