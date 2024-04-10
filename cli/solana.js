@@ -15,14 +15,13 @@ const {
   LAMPORTS_PER_SOL,
   TransactionMessage,
   VersionedTransaction,
+  ComputeBudgetProgram,
 } = require('@solana/web3.js')
 const {
   createTransferInstruction,
   getAccount,
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
-  TokenInvalidMintError,
-  TokenInvalidOwnerError,
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
 } = require('@solana/spl-token')
@@ -34,95 +33,8 @@ const solanaLogReceipt = explorer => {
   console.log('\x1b[33m%s', `
 Note: This does not mean that the transfer transaction was successfully confirmed. 
 Solana may drop transactions when the blocknetwork is congested. 
-If you never see the transaction information on the blockexplorer, please retry.
+If you are unable to see the transaction information on the blockexplorer for a long time (2 minutes), the transaction may have been dropped, try sending the transaction again using the CLI.
   `)
-}
-
-const TOKEN_PROGRAM_ID = new PublicKey(
-  'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
-)
-
-const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
-  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
-)
-
-const getOrCreateAssociatedTokenAccount = async (
-  connection,
-  payer,
-  mint,
-  owner,
-  allowOwnerOffCurve,
-  commitment,
-  programId = TOKEN_PROGRAM_ID,
-  associatedTokenProgramId = ASSOCIATED_TOKEN_PROGRAM_ID
-) => {
-  const associatedToken = getAssociatedTokenAddressSync(
-    mint,
-    owner,
-    allowOwnerOffCurve || false,
-    programId,
-    associatedTokenProgramId
-  )
-  let account
-  try {
-    account = await getAccount(
-      connection,
-      associatedToken,
-      commitment,
-      programId
-    )
-  } catch (error) {
-    if (
-      error instanceof TokenAccountNotFoundError ||
-      error instanceof TokenInvalidAccountOwnerError
-    ) {
-      try {
-        const instructions = [
-          createAssociatedTokenAccountInstruction(
-            payer.publicKey,
-            associatedToken,
-            owner,
-            mint,
-            programId,
-            associatedTokenProgramId
-          ),
-        ]
-
-        const latestBlockhash = await connection.getLatestBlockhash('confirmed')
-        const messageV0 = new TransactionMessage({
-          payerKey: payer.publicKey,
-          recentBlockhash: latestBlockhash.blockhash,
-          instructions,
-        }).compileToV0Message()
-
-        const transaction = new CustomVersionedTransaction(messageV0)
-        await transaction.sign([payer])
-        const txid = await connection.sendTransaction(transaction, {
-          maxRetries: 5,
-        })
-        await connection.confirmTransaction({
-          signature: txid,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        })
-      } catch (err) {
-        // ...
-      }
-      account = await getAccount(
-        connection,
-        associatedToken,
-        commitment,
-        programId
-      )
-    } else {
-      throw error
-    }
-  }
-
-  if (!account.mint.equals(mint)) throw new TokenInvalidMintError()
-  if (!account.owner.equals(owner)) throw new TokenInvalidOwnerError()
-
-  return account
 }
 
 class CustomVersionedTransaction extends VersionedTransaction {
@@ -154,24 +66,48 @@ class MPCSigner {
   }
 }
 
-const createConnection = (network, rpc) => {
-  let connection
-  if (rpc) {
-    connection = new Connection(rpc)
-  } else {
-    connection = new Connection(
-      network === 'mainnet'
-        ? clusterApiUrl('mainnet-beta')
-        : clusterApiUrl('testnet')
-    )
+const createConnectionCluster = (network, rpc) => {
+  let endpoints = [rpc, clusterApiUrl('testnet')]
+  if (network === 'mainnet') {
+    endpoints = [
+      rpc,
+      clusterApiUrl('mainnet-beta'),
+      'https://mainnet.helius-rpc.com/?api-key=efc82eb1-8237-4c46-b915-dee916dd3bd7',
+      'https://solana-mainnet.g.alchemy.com/v2/dZLUXuysijJ6qUzN0kX35ixbnfOO8qsj',
+    ]
   }
-  return connection
+  return endpoints.filter(Boolean).map(endpoint => new Connection(endpoint, 'confirmed'))
+}
+
+const sendTransactionByCluster = async (cluster, signer, instructions, network) => {
+  const mainConnection = cluster[0]
+  const latestBlockhash = await mainConnection.getLatestBlockhash()
+  const messageV0 = new TransactionMessage({
+    payerKey: signer.publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+    instructions: [
+      ComputeBudgetProgram.setComputeUnitPrice({
+        microLamports: 100_000,
+      }),
+      ...instructions,
+    ],
+  }).compileToV0Message()
+  const transaction = new CustomVersionedTransaction(messageV0)
+  await transaction.sign([signer])
+
+  const ps = cluster.map(connection => connection.sendTransaction(transaction, { maxRetries: 30 }))
+  const results = await Promise.allSettled(ps)
+  const txid = results.find(result => result.status === 'fulfilled').value
+  const explorer = `https://explorer.solana.com/tx/${txid}${
+    network === 'mainnet' ? '' : '?cluster=testnet'
+  }`
+  solanaLogReceipt(explorer)
 }
 
 const transfer = async config => {
   const { amount, receiver, network, privateKey, rpc } = config
 
-  const connection = createConnection(network, rpc)
+  const cluster = createConnectionCluster(network, rpc)
 
   const signer = new MPCSigner(privateKey)
 
@@ -182,28 +118,18 @@ const transfer = async config => {
       lamports: Number(amount) * LAMPORTS_PER_SOL,
     }),
   ]
-  const latestBlockhash = await connection.getLatestBlockhash('finalized')
-  const messageV0 = new TransactionMessage({
-    payerKey: signer.publicKey,
-    recentBlockhash: latestBlockhash.blockhash,
-    instructions,
-  }).compileToV0Message()
-  const transaction = new CustomVersionedTransaction(messageV0)
-  await transaction.sign([signer])
-  const txid = await connection.sendTransaction(transaction, { maxRetries: 5 })
-  const explorer = `https://explorer.solana.com/tx/${txid}${
-    network === 'mainnet' ? '' : '?cluster=devnet'
-  }`
-  solanaLogReceipt(explorer)
+
+  await sendTransactionByCluster(cluster, signer, instructions, network)
 }
 
 const ftTransfer = async config => {
   const { amount, receiver, network, privateKey, rpc, ftoken } = config
-  const connection = createConnection(network, rpc)
+  const cluster = createConnectionCluster(network, rpc)
+  const mainConnection = cluster[0]
 
   const mintAddress = new PublicKey(ftoken)
 
-  const info = await connection.getParsedAccountInfo(mintAddress)
+  const info = await mainConnection.getParsedAccountInfo(mintAddress)
   const decimals = info.value?.data?.parsed?.info?.decimals
   if (!decimals) {
     throw new Error('Failed to get token currency precision')
@@ -211,41 +137,46 @@ const ftTransfer = async config => {
 
   const signer = new MPCSigner(privateKey)
 
-  const sourceAccount = await getOrCreateAssociatedTokenAccount(
-    connection,
-    signer,
+  const sourceAccountAddress = getAssociatedTokenAddressSync(
     mintAddress,
-    signer.publicKey
+    signer.publicKey,
   )
 
-  const destinationAccount = await getOrCreateAssociatedTokenAccount(
-    connection,
-    signer,
+  const destinationAccountAddress = getAssociatedTokenAddressSync(
     mintAddress,
-    new PublicKey(receiver)
+    new PublicKey(receiver),
   )
 
-  const instructions = [
+  const instructions = []
+  try {
+    await getAccount(
+      mainConnection,
+      destinationAccountAddress
+    )
+  } catch (err) {
+    if (err instanceof TokenAccountNotFoundError || err instanceof TokenInvalidAccountOwnerError) {
+      instructions.push(
+        createAssociatedTokenAccountInstruction(
+          signer.publicKey,
+          destinationAccountAddress,
+          new PublicKey(receiver),
+          mintAddress,
+        )
+      )
+    } else {
+      throw err
+    }
+  }
+
+  instructions.push(
     createTransferInstruction(
-      sourceAccount.address,
-      destinationAccount.address,
+      sourceAccountAddress,
+      destinationAccountAddress,
       signer.publicKey,
       amount * 10 ** decimals
     ),
-  ]
-  const latestBlockhash = await connection.getLatestBlockhash('finalized')
-  const messageV0 = new TransactionMessage({
-    payerKey: signer.publicKey,
-    recentBlockhash: latestBlockhash.blockhash,
-    instructions,
-  }).compileToV0Message()
-  const transaction = new CustomVersionedTransaction(messageV0)
-  await transaction.sign([signer])
-  const txid = await connection.sendTransaction(transaction, { maxRetries: 10 })
-  const explorer = `https://explorer.solana.com/tx/${txid}${
-    network === 'mainnet' ? '' : '?cluster=devnet'
-  }`
-  solanaLogReceipt(explorer)
+  )
+  await sendTransactionByCluster(cluster, signer, instructions, network)
 }
 
 const handleException = err => {
