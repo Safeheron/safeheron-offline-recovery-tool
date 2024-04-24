@@ -7,6 +7,7 @@ import near from './near'
 import filecoin from './filecoin'
 import sui from './sui'
 import aptos from './aptos'
+import solana from './solana'
 
 export default {
   bitcoin,
@@ -18,4 +19,5 @@ export default {
   filecoin,
   sui,
   aptos,
+  solana,
 }

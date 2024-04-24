@@ -1,10 +1,19 @@
-import { MasterKeyPair, MasterKeyShare, Mnemonics, SigAlg } from '@safeheron/master-key-derive'
+import {
+  MasterKeyPair,
+  MasterKeyShare,
+  Mnemonics,
+  SigAlg,
+} from '@safeheron/master-key-derive'
 import { BN } from 'bn.js'
 import { Secp256k1HDKey, Ed25519HDKey } from '@safeheron/crypto-bip32'
 import { mnemonicToEntropy } from 'bip39'
 
 import blockchainUtil from './blockchain'
-import { padToLength, toCompressedPubKeyHex, toUncompressedPubKeyHex } from './common'
+import {
+  padToLength,
+  toCompressedPubKeyHex,
+  toUncompressedPubKeyHex,
+} from './common'
 import {
   CSV_FIELD_BLOCKCHAIN,
   CSV_FIELD_NETWORK,
@@ -23,6 +32,7 @@ import {
   FIL_CHAIN,
   SUI_CHAIN,
   APTOS_CHAIN,
+  SOLANA_CHAIN,
 } from './const'
 
 export interface MultiAlgoHDKey {
@@ -43,7 +53,10 @@ export interface DerivedCSVRow extends RawCSVRow {
   [CSV_FIELD_PRIVATE_KEY]: string
 }
 
-export const recoverHDKeyFromMnemonics = (mnemonics: string[], chainCode?: string): MultiAlgoHDKey => {
+export const recoverHDKeyFromMnemonics = (
+  mnemonics: string[],
+  chainCode?: string
+): MultiAlgoHDKey => {
   if (chainCode) {
     const chaincodeBN = new BN(chainCode, 16)
     const mnemonicHexArray = mnemonics.map(m => mnemonicToEntropy(m))
@@ -52,12 +65,20 @@ export const recoverHDKeyFromMnemonics = (mnemonics: string[], chainCode?: strin
       const keyshare = new BN(mnemonicHex, 16)
       masterKeyshareArray.push(new MasterKeyShare(keyshare, chaincodeBN, true))
     }
-    const masterKeyPairSecp256k1 = MasterKeyPair.recoverFromMasterKeyShares(masterKeyshareArray, SigAlg.ECDSA_SECP256K1)
+    const masterKeyPairSecp256k1 = MasterKeyPair.recoverFromMasterKeyShares(
+      masterKeyshareArray,
+      SigAlg.ECDSA_SECP256K1
+    )
 
     const ms = mnemonics.map(m => new Mnemonics(m, ''))
-    const masterKeyPairSecpEd25519 = MasterKeyPair.recoverFromMnemonics(ms, SigAlg.EDDSA_ED25519)
+    const masterKeyPairSecpEd25519 = MasterKeyPair.recoverFromMnemonics(
+      ms,
+      SigAlg.EDDSA_ED25519
+    )
 
-    const secp256k1 = Secp256k1HDKey.fromExtendedKey(masterKeyPairSecp256k1.xprv)
+    const secp256k1 = Secp256k1HDKey.fromExtendedKey(
+      masterKeyPairSecp256k1.xprv
+    )
     const ed25519 = Ed25519HDKey.fromExtendedKey(masterKeyPairSecpEd25519.xprv)
     return {
       secp256k1,
@@ -67,8 +88,14 @@ export const recoverHDKeyFromMnemonics = (mnemonics: string[], chainCode?: strin
 
   const ms = mnemonics.map(m => new Mnemonics(m, ''))
 
-  const masterKeyPairSecp256k1 = MasterKeyPair.recoverFromMnemonics(ms, SigAlg.ECDSA_SECP256K1)
-  const masterKeyPairSecpEd25519 = MasterKeyPair.recoverFromMnemonics(ms, SigAlg.EDDSA_ED25519)
+  const masterKeyPairSecp256k1 = MasterKeyPair.recoverFromMnemonics(
+    ms,
+    SigAlg.ECDSA_SECP256K1
+  )
+  const masterKeyPairSecpEd25519 = MasterKeyPair.recoverFromMnemonics(
+    ms,
+    SigAlg.EDDSA_ED25519
+  )
 
   const secp256k1 = Secp256k1HDKey.fromExtendedKey(masterKeyPairSecp256k1.xprv)
   const ed25519 = Ed25519HDKey.fromExtendedKey(masterKeyPairSecpEd25519.xprv)
@@ -79,18 +106,28 @@ export const recoverHDKeyFromMnemonics = (mnemonics: string[], chainCode?: strin
   }
 }
 
-const isBTCLike = (blockchian: SUPPORTED_BLOCKCHAIN_TYPE): boolean => [BITCOIN_CHAIN, DASH_CHAIN, BITCOIN_CASH_CHAIN].includes(blockchian)
-const isFil = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) => FIL_CHAIN === blockchain
+const isBTCLike = (blockchian: SUPPORTED_BLOCKCHAIN_TYPE): boolean =>
+  [BITCOIN_CHAIN, DASH_CHAIN, BITCOIN_CASH_CHAIN].includes(blockchian)
+const isFil = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
+  FIL_CHAIN === blockchain
 
 export class ValidateAddressError extends Error {}
 
-const validateAddress = (chainType: SUPPORTED_BLOCKCHAIN_TYPE, publicKeyPoint: any, pubhex: string, address: string, row: number) => {
+const validateAddress = (
+  chainType: SUPPORTED_BLOCKCHAIN_TYPE,
+  publicKeyPoint: any,
+  pubhex: string,
+  address: string,
+  row: number
+) => {
   let derivedAddress: string[] = []
   let newAddress = address
   switch (chainType) {
     case EVM_CHAIN:
       newAddress = address.toLowerCase()
-      derivedAddress = blockchainUtil.ethereum.derivedAddress(pubhex).map((add: string) => add.toLowerCase())
+      derivedAddress = blockchainUtil.ethereum
+        .derivedAddress(pubhex)
+        .map((add: string) => add.toLowerCase())
       break
     case BITCOIN_CHAIN:
       derivedAddress = blockchainUtil.bitcoin.derivedAddress(pubhex)
@@ -102,13 +139,17 @@ const validateAddress = (chainType: SUPPORTED_BLOCKCHAIN_TYPE, publicKeyPoint: a
       derivedAddress = blockchainUtil.dash.derivedAddress(pubhex)
       break
     case TRON_CHAIN:
-      derivedAddress = blockchainUtil.tron.derivedAddress(toUncompressedPubKeyHex(publicKeyPoint))
+      derivedAddress = blockchainUtil.tron.derivedAddress(
+        toUncompressedPubKeyHex(publicKeyPoint)
+      )
       break
     case NEAR_CHAIN:
       derivedAddress = blockchainUtil.near.derivedAddress(pubhex)
       break
     case FIL_CHAIN:
-      derivedAddress = blockchainUtil.filecoin.derivedAddress(toUncompressedPubKeyHex(publicKeyPoint))
+      derivedAddress = blockchainUtil.filecoin.derivedAddress(
+        toUncompressedPubKeyHex(publicKeyPoint)
+      )
       break
     case SUI_CHAIN:
       derivedAddress = blockchainUtil.sui.derivedAddress(pubhex)
@@ -116,22 +157,32 @@ const validateAddress = (chainType: SUPPORTED_BLOCKCHAIN_TYPE, publicKeyPoint: a
     case APTOS_CHAIN:
       derivedAddress = blockchainUtil.aptos.derivedAddress(pubhex)
       break
+    case SOLANA_CHAIN:
+      derivedAddress = blockchainUtil.solana.derivedAddress(pubhex)
+      break
     default:
       break
   }
   if (!derivedAddress.includes(newAddress)) {
-    const msg = `derived address: ${JSON.stringify(derivedAddress)}, expected address: ${newAddress}`
+    const msg = `derived address: ${JSON.stringify(
+      derivedAddress
+    )}, expected address: ${newAddress}`
     throw new ValidateAddressError(msg)
   }
 }
 
-export const recoverDerivedCSV = (csv: RawCSVRow[], hdkey: MultiAlgoHDKey): DerivedCSVRow[] => {
+export const recoverDerivedCSV = (
+  csv: RawCSVRow[],
+  hdkey: MultiAlgoHDKey
+): DerivedCSVRow[] => {
   const res = csv.map((item, index) => {
     const path = item[CSV_REQUIRED_FIELD]
-    const blockchain = item[CSV_FIELD_BLOCKCHAIN]
     const network = item[CSV_FIELD_NETWORK]
     const address = item[CSV_FIELD_ADDRESS]
     const algo = item[CSV_FIELD_ALGO]
+    const blockchain = item[
+      CSV_FIELD_BLOCKCHAIN
+    ].toLowerCase() as SUPPORTED_BLOCKCHAIN_TYPE
 
     let childKey
     let priv

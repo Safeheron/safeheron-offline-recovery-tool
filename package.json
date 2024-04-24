@@ -1,6 +1,6 @@
 {
   "name": "Offline-Recovery-Tool",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "author": "Safeheron",
   "scripts": {
@@ -25,12 +25,15 @@
     ]
   },
   "dependencies": {
+    "@aptos-labs/ts-sdk": "^1.8.0",
     "@mysten/sui.js": "^0.35.1",
     "@noble/hashes": "^1.3.2",
     "@psf/bch-js": "^6.4.5",
     "@safeheron/crypto-bip32": "^1.0.0",
     "@safeheron/master-key-derive": "^1.0.1",
-    "@tauri-apps/api": "^1.2.0",
+    "@solana/spl-token": "^0.4.1",
+    "@solana/web3.js": "^1.90.0",
+    "@tauri-apps/api": "^1.5.3",
     "antd": "^5.1.5",
     "assert": "^2.0.0",
     "base32-encode": "^1.2.0",
@@ -71,7 +74,7 @@
     "@commitlint/cli": "^17.4.1",
     "@commitlint/config-conventional": "^17.4.0",
     "@jest/globals": "^29.3.1",
-    "@tauri-apps/cli": "^1.2.3",
+    "@tauri-apps/cli": "^1.5.11",
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^12.1.5",
     "@types/bn.js": "^5.1.1",
