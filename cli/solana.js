@@ -25,16 +25,33 @@ const {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
 } = require('@solana/spl-token')
+const BigNumber = require('bignumber.js')
 
-const { logReceipt } = require('./utils')
+const { parseAmount } = require('./utils')
 
-const solanaLogReceipt = explorer => {
-  logReceipt('Solana', explorer)
-  console.log('\x1b[33m%s', `
-Note: This does not mean that the transfer transaction was successfully confirmed. 
-Solana may drop transactions when the blocknetwork is congested. 
-If you are unable to see the transaction information on the blockexplorer for a long time (2 minutes), the transaction may have been dropped, try sending the transaction again using the CLI.
+const logExplore = explorer => {
+  console.log(
+    '--------------------------------------------------------------------------------------------'
+  )
+  console.log('Open link below to see transaction in Solana explorer')
+  console.log(explorer)
+  console.log(
+    '--------------------------------------------------------------------------------------------'
+  )
+}
+
+const logReceiptSuccess = explorer => {
+  console.log('Transaction sent and confirmed successfully!')
+  logExplore(explorer)
+}
+
+const logReceiptFail = explorer => {
+  console.log('\x1b[31m%s\x1b[0m', 'Transaction confirmation timeout. Please open the blockexplorer to see the transaction information!')
+  console.log('\x1b[33m%s\x1b[0m', `
+Note: Solana may drop transactions when the blocknetwork is congested. 
+If you are unable to see the transaction information on the blockexplorer for a long time (90 seconds), the transaction may have been dropped, try sending the transaction again using the CLI.
   `)
+  logExplore(explorer)
 }
 
 class CustomVersionedTransaction extends VersionedTransaction {
@@ -97,11 +114,28 @@ const sendTransactionByCluster = async (cluster, signer, instructions, network) 
 
   const ps = cluster.map(connection => connection.sendTransaction(transaction, { maxRetries: 30 }))
   const results = await Promise.allSettled(ps)
-  const txid = results.find(result => result.status === 'fulfilled').value
+
+  const resultFulfilled = results.find(result => result.status === 'fulfilled')
+  if (!resultFulfilled) {
+    throw results[0]
+  }
+
+  const txid = resultFulfilled.value
+
+  const confirmation = await mainConnection.confirmTransaction({
+    signature: txid,
+    lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+    blockhash: latestBlockhash.blockhash,
+  })
+
   const explorer = `https://explorer.solana.com/tx/${txid}${
     network === 'mainnet' ? '' : '?cluster=testnet'
   }`
-  solanaLogReceipt(explorer)
+  if (!confirmation.value.err) {
+    logReceiptSuccess(explorer)
+  } else {
+    logReceiptFail(explorer)
+  }
 }
 
 const transfer = async config => {
@@ -115,7 +149,7 @@ const transfer = async config => {
     SystemProgram.transfer({
       fromPubkey: signer.publicKey,
       toPubkey: new PublicKey(receiver),
-      lamports: Number(amount) * LAMPORTS_PER_SOL,
+      lamports: BigInt(new BigNumber(amount).multipliedBy(LAMPORTS_PER_SOL).toString()),
     }),
   ]
 
@@ -173,7 +207,7 @@ const ftTransfer = async config => {
       sourceAccountAddress,
       destinationAccountAddress,
       signer.publicKey,
-      amount * 10 ** decimals
+      parseAmount(amount, decimals),
     ),
   )
   await sendTransactionByCluster(cluster, signer, instructions, network)
