@@ -8,6 +8,7 @@ import filecoin from './filecoin'
 import sui from './sui'
 import aptos from './aptos'
 import solana from './solana'
+import ton from './ton'
 
 export default {
   bitcoin,
@@ -20,4 +21,5 @@ export default {
   sui,
   aptos,
   solana,
+  ton,
 }

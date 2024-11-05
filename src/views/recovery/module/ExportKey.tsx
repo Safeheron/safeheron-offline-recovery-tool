@@ -1,4 +1,5 @@
-import { FC, useEffect, useState } from 'react'
+import { FC, useEffect, useMemo, useState } from 'react'
+import styled from 'styled-components'
 import { dialog, fs } from '@tauri-apps/api'
 
 import { Button } from '@/components/base'
@@ -30,6 +31,13 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
   useEffect(() => {
     exportPrivateKey()
   }, [])
+
+  const includeTON = useMemo(() => {
+    if (Array.isArray(data.csvJson)) {
+      return !!data.csvJson.find(account => account['Blockchain Type'] === 'TON')
+    }
+    return false
+  }, [data.csvJson])
 
   const exportPrivateKey = async () => {
     setLoading(true)
@@ -92,18 +100,40 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         <div className="content"><div>loading...</div></div>
       )}
 
-      <div className="step-buttons">
-        <Button onClick={prev}>{t('common.prev')}</Button>
-        <Button
-          type="primary"
-          onClick={exportCSV}
-          disabled={!!errMsg || !csvStr}
-        >
-          {t('Recovery.ExportKey.export')}
-        </Button>
-      </div>
+      <Footer>
+        {
+          includeTON && (
+            <p>{t('Recovery.ExportKey.tip')}</p>
+          )
+        }
+        <div className="step-buttons">
+          <div>
+            <Button onClick={prev}>{t('common.prev')}</Button>
+            <Button
+              type="primary"
+              onClick={exportCSV}
+              disabled={!!errMsg || !csvStr}
+            >
+              {t('Recovery.ExportKey.export')}
+            </Button>
+          </div>
+        </div>
+      </Footer>
     </>
   )
 }
+
+const Footer = styled.div`
+  p {
+    line-height: 20px;
+    font-size: 12px;
+    color: #e97207;
+    padding: 0 34px;
+  }
+
+  .step-buttons {
+    padding-top: 8px !important;  
+  }
+`
 
 export default ExportKey
