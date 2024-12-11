@@ -14,6 +14,7 @@ const {
   storeMessage,
   comment,
 } = require('@ton/ton')
+const fetch = require('node-fetch')
 
 const { logReceipt, startTaskPolling, parseAmount } = require('./utils')
 
@@ -59,14 +60,24 @@ const getUserJettonWalletAddress = async (
   return response.stack.readAddress()
 }
 
-// const getJettonDecimals = async (jettonMasterAddress, client) => {
-//   const response = await client.runMethod(
-//     Address.parse(jettonMasterAddress),
-//     'get_jetton_data'
-//   )
-
-//   return response.stack.readNumber()
-// }
+const getJettonDecimals = async (jettonMasterAddress, network) => {
+  let url = 'https://toncenter.com/api/v2/getTokenData?address='
+  if (network === 'testnet') {
+    url = 'https://testnet.toncenter.com/api/v2/getTokenData?address='
+  }
+  const res = await fetch(url + jettonMasterAddress)
+  if (!res.ok) {
+    throw new Error('Failed to fetch jetton metadata')
+  }
+  try {
+    const data = await res.json()
+    if (data.ok) {
+      return data.result.jetton_content.data.decimals
+    }
+  } catch (err) {
+    throw new Error('Failed to fetch jetton decimals value')
+  }
+}
 
 const mpcSigner = async (cell, privateKey) => {
   const hash = cell.hash()
@@ -137,17 +148,18 @@ const ftTransfer = async config => {
 
   const jettonWalletAddress = await getUserJettonWalletAddress(sender, ftoken, client)
 
-  // TODO: 从链上获取 Jetton 精度
-  // const jettonDecimals = await getJettonDecimals(ftoken, client)
+  const jettonDecimals = await getJettonDecimals(ftoken, network)
+
+  const coins = parseAmount(amount, Number(jettonDecimals || 9))
 
   const commonBodyCell = beginCell()
     .storeUint(0x0f8a7ea5, 32) // opcode for jetton transfer
     .storeUint(0, 64) // query id
-    .storeCoins(parseAmount(amount, 6)) // jetton amount, amount * 10^9, note: usdt is 10^6
+    .storeCoins(coins) // jetton amount, amount * 10^9, note: usdt is 10^6
     .storeAddress(Address.parse(receiver))
     .storeAddress(Address.parse(sender)) // response destination
     .storeBit(0) // no custom payload
-    .storeCoins(0) // forward amount - if > 0, will send notification message
+    .storeCoins(toNano(0.01)) // forward amount - if > 0, will send notification message
 
   let messageBodyCell
   if (memo) {
