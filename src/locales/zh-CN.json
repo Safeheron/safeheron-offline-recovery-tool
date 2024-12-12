@@ -70,7 +70,7 @@
       "recoverHDKeyErrorV2": "恢复失败，请检查助记词是否正确",
       "validateAddress": "数据文件检验失败，请检查数据文件是否正确",
       "recoverPrivateKeyError": "子私钥恢复失败",
-      "tip": "由于 TON 网络为 ED25519 算法生成，您需要使用 Safeheron 提供的 CLI 命令将资金转出。",
+      "tip": "由于 {{blockchain}} 网络为 ED25519 算法生成，您需要使用 Safeheron 提供的 CLI 命令将资金转出。",
       "export": "导出"
     },
     "ImportFile": {

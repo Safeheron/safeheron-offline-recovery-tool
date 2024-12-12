@@ -9,6 +9,7 @@ import { csvStringify } from '@/utils/csv'
 import { useTranslation } from '@/i18n'
 import { useVersion } from '@/components/SelectVersion'
 import ErrorMsg from '@/components/ErrorMsg'
+import { APTOS_CHAIN, NEAR_CHAIN, SOLANA_CHAIN, SUI_CHAIN, TON_CHAIN, TON_TEST_CHAIN } from '@/utils/const'
 
 export interface RecoveryItemModel {
   chainCode: string
@@ -32,11 +33,12 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
     exportPrivateKey()
   }, [])
 
-  const includeTON = useMemo(() => {
+  const ed25519Chains = useMemo(() => {
     if (Array.isArray(data.csvJson)) {
-      return !!data.csvJson.find(account => account['Blockchain Type'] === 'TON')
+      const result = data.csvJson.filter(account => [TON_CHAIN, TON_TEST_CHAIN, NEAR_CHAIN, APTOS_CHAIN, SUI_CHAIN, SOLANA_CHAIN].includes(account['Blockchain Type'].toLowerCase()))
+      return [...new Set(result.map(item => item['Blockchain Type']))]
     }
-    return false
+    return []
   }, [data.csvJson])
 
   const exportPrivateKey = async () => {
@@ -102,8 +104,8 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
 
       <Footer>
         {
-          includeTON && (
-            <p>{t('Recovery.ExportKey.tip')}</p>
+          ed25519Chains.length > 0 && (
+            <p>{t('Recovery.ExportKey.tip', { blockchain: ed25519Chains.join(',') })}</p>
           )
         }
         <div className="step-buttons">
