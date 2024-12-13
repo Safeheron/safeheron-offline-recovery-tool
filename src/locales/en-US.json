@@ -70,7 +70,7 @@
       "recoverHDKeyErrorV2": "Recovery Failed: Please confirm that the recovery phrase is correct.",
       "validateAddress": "Data File Verification Failure: Please check if the data file is correct.",
       "recoverPrivateKeyError": "Subkey Recovery Failed",
-      "tip": "Since the TON network utilizes the ED25519 algorithm, please use the CLI commands provided by Safeheron to transfer funds.",
+      "tip": "Since the {{blockchain}} network utilizes the Ed25519 algorithm, please use the CLI commands provided by Safeheron to transfer funds.",
       "export": "Export"
     },
     "ImportFile": {
