@@ -33,5 +33,6 @@ amount     # value is transfer amount
 --network, -n     # value is mainnet or testnet
 --token, -t       # value is fungible token contract address. Default is native token (Optional)
 --rpc, -r         # value is a custom RPC URL. (Optional)
+--memo, -m        # TON memo value. (Optional)
 --yes, -y         # automatic yes to prompts. (Optional)
 ```
