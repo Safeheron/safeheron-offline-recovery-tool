@@ -1,6 +1,6 @@
 {
   "name": "Offline-Recovery-Tool",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "author": "Safeheron",
   "scripts": {
@@ -34,6 +34,9 @@
     "@solana/spl-token": "^0.4.1",
     "@solana/web3.js": "^1.90.0",
     "@tauri-apps/api": "^1.5.3",
+    "@ton/core": "^0.59.0",
+    "@ton/crypto": "^3.3.0",
+    "@ton/ton": "^15.1.0",
     "antd": "^5.1.5",
     "assert": "^2.0.0",
     "base32-encode": "^1.2.0",

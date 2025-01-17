@@ -41,10 +41,10 @@ const Wrapper = styled.div`
     bottom: 0;
     left: 0;
     width: 100%;
-    text-align: center;
-    height: 40px;
-    line-height: 40px;
-    color: #ff0000;
+    text-align: left;
+    padding: 8px 14px;
+    line-height: 1.7;
+    color: #ff0000; 
   }
 `
 

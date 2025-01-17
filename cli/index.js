@@ -13,6 +13,8 @@ const getNativeToken = blockchain => {
       return 'APT'
     case 'solana':
       return 'SOL'
+    case 'ton':
+      return 'TON'
     default:
       return ''
   }
@@ -28,6 +30,8 @@ const getBlockChainIns = blockchain => {
       return require('./aptos')
     case 'solana':
       return require('./solana')
+    case 'ton':
+      return require('./ton')
     default:
       return {}
   }
@@ -60,16 +64,18 @@ const transformer = value => {
 }
 
 const prompt = async config => {
-  const { blockchain, network, sender, privateKey, receiver, amount, ftoken } =
+  const { blockchain, network, sender, privateKey, receiver, amount, ftoken, memo } =
     config
   const questions = []
 
-  if (blockchain !== 'sui' && blockchain !== 'near') {
+  const supportChains = ['sui', 'near', 'aptos', 'solana', 'ton']
+
+  if (!supportChains.includes(blockchain)) {
     questions.push({
       name: 'blockchain',
       message: 'select a blockchain',
       type: 'list',
-      choices: ['sui', 'near', 'aptos', 'solana'],
+      choices: supportChains,
     })
   }
 
@@ -130,6 +136,15 @@ const prompt = async config => {
     })
   }
 
+  if (!memo) {
+    questions.push({
+      name: 'memo',
+      message:
+        'enter a memo if it\'s a TON network and the memo exists (Optional)',
+      type: 'input',
+    })
+  }
+
   questions.forEach(q => {
     q.validate = input => validate(q.name, input)
     q.transformer = transformer
@@ -155,6 +170,7 @@ const prompt = async config => {
   token:      ${result.ftoken || getNativeToken(result.blockchain)}
   privateKey: ${result.privateKey}
   ${result.rpc ? `rpcURL:     ${result.rpc}` : ''}
+  ${result.memo ? `memo:  ${result.memo}` : ''}
 `,
         type: 'confirm',
       },
@@ -216,6 +232,10 @@ const main = async () => {
     .option(
       '-t, --ftoken <ftoken>',
       'fungible token contract address. (Default is native token)'
+    )
+    .option(
+      '-m, --memo <memo>',
+      'TON MEMO. (Optional)'
     )
     .action(action)
 

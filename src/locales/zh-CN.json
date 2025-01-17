@@ -42,7 +42,7 @@
     "part3": "第三份",
     "copy": "复制",
     "copyed": "已复制",
-    "online": "为了您的资产安全，请断开网络后（包括关闭 VPN 和虚拟机）再进行操作",
+    "online": "为了您的资产安全，请断开网络（包括关闭 VPN 软件）、断开已经链接在电脑的手机等通信设备之后再操作",
     "done": "完成",
     "choose": "选择"
   },
@@ -70,6 +70,7 @@
       "recoverHDKeyErrorV2": "恢复失败，请检查助记词是否正确",
       "validateAddress": "数据文件检验失败，请检查数据文件是否正确",
       "recoverPrivateKeyError": "子私钥恢复失败",
+      "tip": "由于 {{blockchain}} 网络为 Ed25519 算法生成，您需要使用 Safeheron 提供的 CLI 命令将资金转出。",
       "export": "导出"
     },
     "ImportFile": {

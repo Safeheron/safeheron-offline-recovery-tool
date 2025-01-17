@@ -1,4 +1,5 @@
-import { FC, useEffect, useState } from 'react'
+import { FC, useEffect, useMemo, useState } from 'react'
+import styled from 'styled-components'
 import { dialog, fs } from '@tauri-apps/api'
 
 import { Button } from '@/components/base'
@@ -8,6 +9,7 @@ import { csvStringify } from '@/utils/csv'
 import { useTranslation } from '@/i18n'
 import { useVersion } from '@/components/SelectVersion'
 import ErrorMsg from '@/components/ErrorMsg'
+import { APTOS_CHAIN, NEAR_CHAIN, SOLANA_CHAIN, SUI_CHAIN, TON_CHAIN, TON_TEST_CHAIN } from '@/utils/const'
 
 export interface RecoveryItemModel {
   chainCode: string
@@ -30,6 +32,14 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
   useEffect(() => {
     exportPrivateKey()
   }, [])
+
+  const ed25519Chains = useMemo(() => {
+    if (Array.isArray(data.csvJson)) {
+      const result = data.csvJson.filter(account => [TON_CHAIN, TON_TEST_CHAIN, NEAR_CHAIN, APTOS_CHAIN, SUI_CHAIN, SOLANA_CHAIN].includes(account['Blockchain Type'].toLowerCase()))
+      return [...new Set(result.map(item => item['Blockchain Type']))]
+    }
+    return []
+  }, [data.csvJson])
 
   const exportPrivateKey = async () => {
     setLoading(true)
@@ -92,18 +102,40 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         <div className="content"><div>loading...</div></div>
       )}
 
-      <div className="step-buttons">
-        <Button onClick={prev}>{t('common.prev')}</Button>
-        <Button
-          type="primary"
-          onClick={exportCSV}
-          disabled={!!errMsg || !csvStr}
-        >
-          {t('Recovery.ExportKey.export')}
-        </Button>
-      </div>
+      <Footer>
+        {
+          ed25519Chains.length > 0 && (
+            <p>{t('Recovery.ExportKey.tip', { blockchain: ed25519Chains.join(',') })}</p>
+          )
+        }
+        <div className="step-buttons">
+          <div>
+            <Button onClick={prev}>{t('common.prev')}</Button>
+            <Button
+              type="primary"
+              onClick={exportCSV}
+              disabled={!!errMsg || !csvStr}
+            >
+              {t('Recovery.ExportKey.export')}
+            </Button>
+          </div>
+        </div>
+      </Footer>
     </>
   )
 }
+
+const Footer = styled.div`
+  p {
+    line-height: 20px;
+    font-size: 12px;
+    color: #e97207;
+    padding: 0 34px;
+  }
+
+  .step-buttons {
+    padding-top: 8px !important;  
+  }
+`
 
 export default ExportKey

@@ -42,7 +42,7 @@
     "part3": "Third",
     "copy": "Copy",
     "copyed": "Copied",
-    "online": "For your assets security, please disconnect to the Internet (including close VPN and VM) to proceed",
+    "online": "To ensure the security of your assets, please disconnect from the network (including disabling any VPNs) and unplug any communication devices, such as mobile phones connected to your computer, before proceeding.",
     "done": "Done",
     "choose": "Choose"
   },
@@ -70,6 +70,7 @@
       "recoverHDKeyErrorV2": "Recovery Failed: Please confirm that the recovery phrase is correct.",
       "validateAddress": "Data File Verification Failure: Please check if the data file is correct.",
       "recoverPrivateKeyError": "Subkey Recovery Failed",
+      "tip": "Since the {{blockchain}} network utilizes the Ed25519 algorithm, please use the CLI commands provided by Safeheron to transfer funds.",
       "export": "Export"
     },
     "ImportFile": {

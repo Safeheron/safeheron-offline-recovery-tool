@@ -25,6 +25,7 @@ import {
   SUPPORTED_BLOCKCHAIN_TYPE,
   BITCOIN_CASH_CHAIN,
   BITCOIN_CHAIN,
+  BITCOIN_TEST_CHAIN,
   DASH_CHAIN,
   EVM_CHAIN,
   NEAR_CHAIN,
@@ -33,6 +34,8 @@ import {
   SUI_CHAIN,
   APTOS_CHAIN,
   SOLANA_CHAIN,
+  TON_CHAIN,
+  TON_TEST_CHAIN,
 } from './const'
 
 export interface MultiAlgoHDKey {
@@ -107,7 +110,7 @@ export const recoverHDKeyFromMnemonics = (
 }
 
 const isBTCLike = (blockchian: SUPPORTED_BLOCKCHAIN_TYPE): boolean =>
-  [BITCOIN_CHAIN, DASH_CHAIN, BITCOIN_CASH_CHAIN].includes(blockchian)
+  [BITCOIN_CHAIN, BITCOIN_TEST_CHAIN, DASH_CHAIN, BITCOIN_CASH_CHAIN].includes(blockchian)
 const isFil = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
   FIL_CHAIN === blockchain
 
@@ -130,6 +133,7 @@ const validateAddress = (
         .map((add: string) => add.toLowerCase())
       break
     case BITCOIN_CHAIN:
+    case BITCOIN_TEST_CHAIN:
       derivedAddress = blockchainUtil.bitcoin.derivedAddress(pubhex)
       break
     case BITCOIN_CASH_CHAIN:
@@ -159,6 +163,10 @@ const validateAddress = (
       break
     case SOLANA_CHAIN:
       derivedAddress = blockchainUtil.solana.derivedAddress(pubhex)
+      break
+    case TON_CHAIN:
+    case TON_TEST_CHAIN:
+      derivedAddress = blockchainUtil.ton.derivedAddress(pubhex)
       break
     default:
       break
