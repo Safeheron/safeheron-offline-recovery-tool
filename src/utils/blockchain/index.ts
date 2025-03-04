@@ -9,6 +9,8 @@ import sui from './sui'
 import aptos from './aptos'
 import solana from './solana'
 import ton from './ton'
+import ltc from './ltc'
+import doge from './doge'
 
 export default {
   bitcoin,
@@ -22,4 +24,6 @@ export default {
   aptos,
   solana,
   ton,
+  ltc,
+  doge,
 }

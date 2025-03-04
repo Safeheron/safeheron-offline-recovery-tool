@@ -36,6 +36,10 @@ import {
   SOLANA_CHAIN,
   TON_CHAIN,
   TON_TEST_CHAIN,
+  DOGE_CHAIN,
+  DOGE_TEST_CHAIN,
+  LTC_TEST_CHAIN,
+  LTC_CHAIN,
 } from './const'
 
 export interface MultiAlgoHDKey {
@@ -113,6 +117,10 @@ const isBTCLike = (blockchian: SUPPORTED_BLOCKCHAIN_TYPE): boolean =>
   [BITCOIN_CHAIN, BITCOIN_TEST_CHAIN, DASH_CHAIN, BITCOIN_CASH_CHAIN].includes(blockchian)
 const isFil = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
   FIL_CHAIN === blockchain
+const isLTC = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
+  [LTC_CHAIN, LTC_TEST_CHAIN].includes(blockchain)
+const isDoge = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
+  [DOGE_CHAIN, DOGE_TEST_CHAIN].includes(blockchain)
 
 export class ValidateAddressError extends Error {}
 
@@ -138,6 +146,14 @@ const validateAddress = (
       break
     case BITCOIN_CASH_CHAIN:
       derivedAddress = blockchainUtil.bitcoincash.derivedAddress(pubhex)
+      break
+    case DOGE_CHAIN:
+    case DOGE_TEST_CHAIN:
+      derivedAddress = blockchainUtil.doge.derivedAddress(pubhex)
+      break
+    case LTC_CHAIN:
+    case LTC_TEST_CHAIN:
+      derivedAddress = blockchainUtil.ltc.derivedAddress(pubhex)
       break
     case DASH_CHAIN:
       derivedAddress = blockchainUtil.dash.derivedAddress(pubhex)
@@ -213,6 +229,16 @@ export const recoverDerivedCSV = (
       )
     } else if (isFil(blockchain)) {
       privateKey = blockchainUtil.filecoin.formatPrivateKey(priv)
+    } else if (isLTC(blockchain)) {
+      privateKey = blockchainUtil.ltc.wifEncodePrivateKey(
+        priv,
+        network === 'mainnet'
+      )
+    } else if (isDoge(blockchain)) {
+      privateKey = blockchainUtil.doge.wifEncodePrivateKey(
+        priv,
+        network === 'mainnet'
+      )
     }
 
     validateAddress(
