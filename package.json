@@ -30,7 +30,7 @@
     "@noble/hashes": "^1.3.2",
     "@psf/bch-js": "^6.4.5",
     "@safeheron/crypto-bip32": "^1.0.0",
-    "@safeheron/master-key-derive": "^1.0.1",
+    "@safeheron/master-key-derive": "^1.1.0",
     "@solana/spl-token": "^0.4.1",
     "@solana/web3.js": "^1.90.0",
     "@tauri-apps/api": "^1.6.0",
