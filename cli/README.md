@@ -21,7 +21,7 @@ node ./cli/index.js transfer <blockchain> <sender> <receiver> <amount> -k <priva
 ```
 ### Arguments
 ```bash
-blockchain # value is sui or near
+blockchain # value is sui / near / aptos / solana / ton 
 sender     # value is sender address 
 receiver   # value is receiver address 
 amount     # value is transfer amount

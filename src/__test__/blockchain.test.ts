@@ -169,3 +169,27 @@ test('solana address derivation', () => {
   const [addr] = blockchainUtil.solana.derivedAddress(data.pubkeyHex)
   expect(addr).toEqual(data.address)
 })
+
+test('Litecoin address derivation', () => {
+  const compressedPubKeyHes =
+    '034e8eefb546a29568372aae7c24b4128a349baa701aa1be7869ccade99c17b98d'
+  const expectedDerivedAddressList = [
+    'my4qBvrWU8BHVdmCs5y17C9xKnQDqfnevT',
+    'tltc1qczqcfpyqj5skqhmj73shrsp0nvhada8ljhfast',
+    'LcmqA65Mjkz5yKykKeyvZJ1Pg1Ao1y5NZS',
+    'ltc1qczqcfpyqj5skqhmj73shrsp0nvhada8l9925rp'
+  ]
+  const derivedAddress = blockchainUtil.ltc.derivedAddress(compressedPubKeyHes)
+  expect(derivedAddress.sort()).toEqual(expectedDerivedAddressList.sort())
+})
+
+test('Dogecoin address derivation', () => {
+  const compressedPubKeyHes = '034e8eefb546a29568372aae7c24b4128a349baa701aa1be7869ccade99c17b98d'
+  const expectedDerivedAddressList = [
+    'nmk3A9T5tV738W3Nuvde5ShXanv7E7qTyA',
+    'DNgyS8iAxWeKFXUBt6zBq37ELvXpDnzn55'
+  ]
+
+  const derivedAddress = blockchainUtil.doge.derivedAddress(compressedPubKeyHes)
+  expect(derivedAddress.sort()).toEqual(expectedDerivedAddressList.sort())
+})
