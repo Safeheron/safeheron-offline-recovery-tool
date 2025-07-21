@@ -11,6 +11,7 @@ import solana from './solana'
 import ton from './ton'
 import ltc from './ltc'
 import doge from './doge'
+import liquid from './liquid'
 
 export default {
   bitcoin,
@@ -26,4 +27,5 @@ export default {
   ton,
   ltc,
   doge,
+  liquid,
 }

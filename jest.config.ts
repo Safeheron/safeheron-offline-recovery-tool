@@ -7,6 +7,7 @@ export default {
   // Indicates which provider should be used to instrument code for coverage
   coverageProvider: 'v8',
   moduleNameMapper: {
+    '^.+\\.wasm$': '<rootDir>/wasmTransformer.js',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   testTimeout: 30 * 1000,

@@ -40,6 +40,8 @@ import {
   DOGE_TEST_CHAIN,
   LTC_TEST_CHAIN,
   LTC_CHAIN,
+  LIQUID_CHAIN,
+  LIQUID_TEST_CHAIN,
 } from './const'
 
 export interface MultiAlgoHDKey {
@@ -114,7 +116,7 @@ export const recoverHDKeyFromMnemonics = (
 }
 
 const isBTCLike = (blockchian: SUPPORTED_BLOCKCHAIN_TYPE): boolean =>
-  [BITCOIN_CHAIN, BITCOIN_TEST_CHAIN, DASH_CHAIN, BITCOIN_CASH_CHAIN].includes(blockchian)
+  [BITCOIN_CHAIN, BITCOIN_TEST_CHAIN, DASH_CHAIN, BITCOIN_CASH_CHAIN, LIQUID_CHAIN, LIQUID_TEST_CHAIN].includes(blockchian)
 const isFil = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
   FIL_CHAIN === blockchain
 const isLTC = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
@@ -183,6 +185,10 @@ const validateAddress = (
     case TON_CHAIN:
     case TON_TEST_CHAIN:
       derivedAddress = blockchainUtil.ton.derivedAddress(pubhex)
+      break
+    case LIQUID_CHAIN:
+    case LIQUID_TEST_CHAIN:
+      derivedAddress = blockchainUtil.liquid.derivedAddress(pubhex)
       break
     default:
       break

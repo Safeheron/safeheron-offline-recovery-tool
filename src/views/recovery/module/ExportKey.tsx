@@ -9,7 +9,8 @@ import { csvStringify } from '@/utils/csv'
 import { useTranslation } from '@/i18n'
 import { useVersion } from '@/components/SelectVersion'
 import ErrorMsg from '@/components/ErrorMsg'
-import { APTOS_CHAIN, NEAR_CHAIN, SOLANA_CHAIN, SUI_CHAIN, TON_CHAIN, TON_TEST_CHAIN } from '@/utils/const'
+import { APTOS_CHAIN, LIQUID_CHAIN, LIQUID_TEST_CHAIN, NEAR_CHAIN, SOLANA_CHAIN, SUI_CHAIN, TON_CHAIN, TON_TEST_CHAIN } from '@/utils/const'
+import { LiquidSDK } from '@/wasm/liquidSDK'
 
 export interface RecoveryItemModel {
   chainCode: string
@@ -44,6 +45,7 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
   const exportPrivateKey = async () => {
     setLoading(true)
     let hdKey
+
     try {
       hdKey = recoverHDKeyFromMnemonics(data.mnemonicList, data.chainCode)
     } catch (error: any) {
@@ -56,11 +58,19 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
     setLoading(false)
   }
 
+  const initSDK = async () => {
+    const blockchains = data.csvJson.map(item => item['Blockchain Type'].toLowerCase())
+    if (blockchains.includes(LIQUID_CHAIN) || blockchains.includes(LIQUID_TEST_CHAIN)) await LiquidSDK.init()
+  }
+
   const doRecover = async (hdKey: MultiAlgoHDKey) => {
     try {
       await sleep(300)
 
+      await initSDK()
+
       const derivedArr = recoverDerivedCSV(data.csvJson, hdKey)
+
       const derivedCsvStr = csvStringify<DerivedCSVRow>(derivedArr)
       setErrMsg('')
       setCsvStr(derivedCsvStr)

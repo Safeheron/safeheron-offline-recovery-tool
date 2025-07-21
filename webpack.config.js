@@ -24,6 +24,18 @@ module.exports = {
   module: {
     rules: [
       {
+        test: /\.wasm$/,
+        type: 'javascript/auto',
+        use: [
+          {
+            loader: 'webassembly-loader',
+            options: {
+              export: 'buffer',
+            },
+          },
+        ],
+      },
+      {
         test: /\.(js|ts|tsx)$/,
         exclude: /node_modules\/(?!(@tauri-apps\/))/,
         use: 'babel-loader',
