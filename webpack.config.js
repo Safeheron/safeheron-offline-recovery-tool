@@ -15,7 +15,7 @@ module.exports = {
     filename: '[name].[contenthash].js',
     pathinfo: true,
   },
-  devtool: isDev ? 'eval-source-map' : 'hidden-source-map',
+  devtool: isDev ? 'eval-source-map' : false,
   target: 'web',
   devServer: {
     port: 5000,
