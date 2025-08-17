@@ -54,6 +54,8 @@ module.exports = {
     'max-len': 'off',
     'no-confusing-arrow': 'off',
     'function-paren-newline': 'off',
+    'no-underscore-dangle': 'off',
+    'no-bitwise': 'off',
 
     'react/jsx-filename-extension': [
       0,

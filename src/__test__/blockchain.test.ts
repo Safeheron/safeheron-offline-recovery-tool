@@ -8,6 +8,8 @@ import blockchainUtil from '../utils/blockchain/index'
 
 import wifFixtures from './wifFixtures.json'
 
+import { LiquidSDK } from '@/wasm/liquidSDK'
+
 interface WifFixturesItem {
   privateKeyHex: string
   mainnet: boolean
@@ -191,5 +193,22 @@ test('Dogecoin address derivation', () => {
   ]
 
   const derivedAddress = blockchainUtil.doge.derivedAddress(compressedPubKeyHes)
+  expect(derivedAddress.sort()).toEqual(expectedDerivedAddressList.sort())
+})
+
+test('Liquid address derivation', async () => {
+  await LiquidSDK.init()
+
+  const compressedPubKeyHes =
+    '02b5a353d96f75fece0714c173928b5563de46964143edcf3c9d84537a657e40c7'
+  const expectedDerivedAddressList = [
+    'FXdYWNACCza4VztCjEDEbU6VCJVfEk9WxE',
+    'tex1qrvpj73lwvh7qfu0v25lvqmsg27crj8gvch95ak',
+    'ex1qrvpj73lwvh7qfu0v25lvqmsg27crj8gvz3hapa',
+    'PyjDBeRF7nJTg6p2F3Cvn6p1QtuUBjtRVX',
+  ]
+
+  const derivedAddress = blockchainUtil.liquid.derivedAddress(compressedPubKeyHes)
+
   expect(derivedAddress.sort()).toEqual(expectedDerivedAddressList.sort())
 })

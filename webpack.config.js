@@ -15,7 +15,7 @@ module.exports = {
     filename: '[name].[contenthash].js',
     pathinfo: true,
   },
-  devtool: isDev ? 'eval-source-map' : 'hidden-source-map',
+  devtool: isDev ? 'eval-source-map' : false,
   target: 'web',
   devServer: {
     port: 5000,
@@ -23,6 +23,18 @@ module.exports = {
   },
   module: {
     rules: [
+      {
+        test: /\.wasm$/,
+        type: 'javascript/auto',
+        use: [
+          {
+            loader: 'webassembly-loader',
+            options: {
+              export: 'buffer',
+            },
+          },
+        ],
+      },
       {
         test: /\.(js|ts|tsx)$/,
         exclude: /node_modules\/(?!(@tauri-apps\/))/,
