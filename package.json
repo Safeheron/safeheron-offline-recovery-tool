@@ -9,7 +9,7 @@
     "dev": "tauri dev",
     "prebuild": "rm -rf src-tauri/target/*",
     "verify:macos": "./scripts/verify-macos-build.sh",
-    "build": "tauri build --verbose --target universal-apple-darwin && npm run verify:macos",
+    "build": "tauri build --target universal-apple-darwin && npm run verify:macos",
     "test": "jest --silent",
     "lint": "eslint src",
     "prepare": "husky install",
