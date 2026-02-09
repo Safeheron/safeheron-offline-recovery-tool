@@ -1,6 +1,6 @@
 {
   "name": "Offline-Recovery-Tool",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "private": true,
   "author": "Safeheron",
   "scripts": {
@@ -8,7 +8,8 @@
     "build:fe": "cross-env NODE_ENV=production webpack",
     "dev": "tauri dev",
     "prebuild": "rm -rf src-tauri/target/*",
-    "build": "tauri build --verbose --target universal-apple-darwin",
+    "verify:macos": "./scripts/verify-macos-build.sh",
+    "build": "tauri build --target universal-apple-darwin && npm run verify:macos",
     "test": "jest --silent",
     "lint": "eslint src",
     "prepare": "husky install",
@@ -25,7 +26,7 @@
     ]
   },
   "dependencies": {
-    "@aptos-labs/ts-sdk": "^1.8.0",
+    "@aptos-labs/ts-sdk": "^4.0.0",
     "@mysten/sui.js": "^0.35.1",
     "@noble/hashes": "^1.3.2",
     "@psf/bch-js": "^6.4.5",
