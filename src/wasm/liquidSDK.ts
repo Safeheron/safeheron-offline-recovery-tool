@@ -13,7 +13,11 @@ const getEnvironment = (): 'node' | 'browser' => {
     return 'browser'
   }
 
-  if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+  if (
+    typeof process !== 'undefined' &&
+    process.versions &&
+    process.versions.node
+  ) {
     return 'node'
   }
   return 'node'
@@ -32,7 +36,7 @@ export class LiquidSDK extends BaseSDK {
     let wasmBinary: Uint8Array = liquidWasmBuffer
 
     if (getEnvironment() === 'node') {
-      wasmBinary = liquidWasmBuffer.process('/src/lib/liquid/safeheronliquidsdk.wasm')
+      wasmBinary = liquidWasmBuffer.process('/src/lib/liquid/liquid.wasm')
     }
 
     const instance = await initWasm({
@@ -50,9 +54,16 @@ export class LiquidSDK extends BaseSDK {
     this.instance = instance
   }
 
-  addressFromPublicKey(params: {public_key: string; network: string, address_type: string}): string {
+  addressFromPublicKey(params: {
+    public_key: string
+    network: string
+    address_type: string
+  }): string {
     try {
-      const res = this.invokeWasmMethod<{non_confidential_address: string}>('_liquids_create_non_confidential_em', params)
+      const res = this.invokeWasmMethod<{ non_confidential_address: string }>(
+        '_liquids_create_non_confidential_em',
+        params
+      )
       if (res.success) return res.data.non_confidential_address
     } catch (error) {
       console.error('[LIQUID SDK ERROR]: ', error)
