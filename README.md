@@ -24,10 +24,11 @@ This README is directed towards those who are interested in contributing to the 
 
 ## Prerequisites
 
-Make sure you have Rust and NodeJS environment installed.
+Make sure you have Rust, NodeJS, and Xcode installed.
 
-- Recommended NodeJS version >= 16
-- Recommended Rust version >= 1.65.0
+- NodeJS 22.16.0
+- Rust 1.88.0
+- Xcode 26.2
 
 ## Installation
 
@@ -43,6 +44,17 @@ Make sure you have Rust and NodeJS environment installed.
 ## Distribution
 1. [code signing and notarization](https://tauri.app/v1/guides/distribution/sign-macos/)
 2. npm run build
+
+## Reproducible Build (macOS)
+
+This project includes a deterministic build script for `.app` and `.dmg` outputs.
+It enforces fixed toolchain versions and normalizes timestamps to keep artifacts consistent
+across machines.
+
+1. Ensure your environment matches the versions above.
+2. Run `npm run build:repro`.
+3. Compare SHA256 checksums in:
+   `src-tauri/target/universal-apple-darwin/release/bundle/dmg/SHA256SUMS.txt`
 
 ## Contribution
 

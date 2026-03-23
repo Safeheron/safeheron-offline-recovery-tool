@@ -10,6 +10,7 @@
     "prebuild": "rm -rf src-tauri/target/*",
     "verify:macos": "./scripts/verify-macos-build.sh",
     "build": "tauri build --target universal-apple-darwin && npm run verify:macos",
+    "build:repro": "bash ./scripts/build-repro-macos.sh",
     "test": "jest --silent",
     "lint": "eslint src",
     "prepare": "husky install",
@@ -24,6 +25,9 @@
     "src/**/*.{js,ts,tsx,jsx}": [
       "eslint"
     ]
+  },
+  "engines": {
+    "node": "^22"
   },
   "dependencies": {
     "@aptos-labs/ts-sdk": "^4.0.0",
