@@ -1,9 +1,12 @@
 /* eslint-disable camelcase */
+const crypto = require('crypto')
+
 const {
   ed25519_get_pubkey_hex,
   ed25519_sign,
 } = require('@safeheron/master-key-derive')
 const {
+  Dictionary,
   WalletContractV4,
   TonClient,
   internal,
@@ -16,31 +19,7 @@ const {
 } = require('@ton/ton')
 const fetch = require('node-fetch')
 
-const { logReceipt, startTaskPolling, parseAmount } = require('./utils')
-
-const onTransaction = (client, sender, receiver, amount, network) =>
-  startTaskPolling(
-    async () => {
-      const txs = await client.getTransactions(receiver, { limit: 3 })
-      const targetTx = txs.find(tx => {
-        const src = tx?.inMessage?.info?.src?.toString?.()
-        const coins = tx?.inMessage?.info?.value?.coins
-        return src === sender && coins === toNano(amount)
-      })
-      if (targetTx) {
-        const hash = targetTx.hash().toString('hex')
-        const explorer =
-          network === 'testnet'
-            ? `https://testnet.tonviewer.com/transaction/${hash}`
-            : `https://tonviewer.com/transaction/${hash}`
-        logReceipt('TON', explorer)
-        return true
-      }
-      return false
-    },
-    5,
-    60
-  )
+const { logReceipt, parseAmount } = require('./utils')
 
 const getUserJettonWalletAddress = async (
   userAddress,
@@ -60,23 +39,55 @@ const getUserJettonWalletAddress = async (
   return response.stack.readAddress()
 }
 
-const getJettonDecimals = async (jettonMasterAddress, network) => {
-  let url = 'https://toncenter.com/api/v2/getTokenData?address='
-  if (network === 'testnet') {
-    url = 'https://testnet.toncenter.com/api/v2/getTokenData?address='
-  }
-  const res = await fetch(url + jettonMasterAddress)
-  if (!res.ok) {
-    throw new Error('Failed to fetch jetton metadata')
-  }
-  try {
-    const data = await res.json()
-    if (data.ok) {
-      return data.result.jetton_content.data.decimals
+const sha256Key = name => {
+  const hash = crypto.createHash('sha256').update(name).digest()
+  return BigInt(`0x${hash.toString('hex')}`)
+}
+
+const getJettonDecimals = async (client, jettonMasterAddress) => {
+  const fallbackDecimals = 9
+  const result = await client.runMethod(
+    Address.parse(jettonMasterAddress),
+    'get_jetton_data'
+  )
+
+  result.stack.readBigNumber() // total_supply
+  result.stack.readNumber() // mintable
+  result.stack.readAddress() // admin_address
+  const jettonContent = result.stack.readCell()
+
+  const slice = jettonContent.beginParse()
+  const prefix = slice.loadUint(8)
+
+  if (prefix === 0x00) {
+    // on-chain TEP-64 content
+    const dict = slice.loadDict(
+      Dictionary.Keys.BigUint(256),
+      Dictionary.Values.Cell()
+    )
+    const decimalsCell = dict.get(sha256Key('decimals'))
+    if (decimalsCell) {
+      try {
+        const s = decimalsCell.beginParse()
+        s.loadUint(8) // snake prefix
+        return parseInt(s.loadStringTail()) || fallbackDecimals
+      } catch {
+        return fallbackDecimals
+      }
     }
-  } catch (err) {
-    throw new Error('Failed to fetch jetton decimals value')
+  } else if (prefix === 0x01) {
+    // off-chain: fetch the metadata URI
+    const uri = slice.loadStringTail()
+    try {
+      const res = await fetch(uri)
+      const json = await res.json()
+      return parseInt(json.decimals) || fallbackDecimals
+    } catch {
+      return fallbackDecimals
+    }
   }
+
+  return fallbackDecimals // fallback
 }
 
 const mpcSigner = async (cell, privateKey) => {
@@ -114,17 +125,31 @@ const transfer = async config => {
     body: memo,
   })
 
-  const transferV4Cell = await contract.createTransfer({
+  const body = await contract.createTransfer({
     seqno,
     signer: cell => mpcSigner(cell, privateKey),
     messages: [internalMessage],
   })
 
-  await contract.send(transferV4Cell)
+  const externalMessage = external({
+    to: wallet.address,
+    init: false,
+    body,
+  })
 
-  const sender = wallet.address.toString()
+  const externalMessageCell = beginCell()
+    .store(storeMessage(externalMessage))
+    .endCell()
 
-  return onTransaction(client, sender, receiver, amount, network)
+  const hash = externalMessageCell.hash().toString('hex')
+  await client.sendFile(externalMessageCell.toBoc())
+
+  const explorer =
+    network === 'testnet'
+      ? `https://testnet.tonviewer.com/transaction/${hash}`
+      : `https://tonviewer.com/transaction/${hash}`
+
+  logReceipt('TON', explorer)
 }
 
 const ftTransfer = async config => {
@@ -146,9 +171,13 @@ const ftTransfer = async config => {
 
   const sender = wallet.address.toString()
 
-  const jettonWalletAddress = await getUserJettonWalletAddress(sender, ftoken, client)
+  const jettonWalletAddress = await getUserJettonWalletAddress(
+    sender,
+    ftoken,
+    client
+  )
 
-  const jettonDecimals = await getJettonDecimals(ftoken, network)
+  const jettonDecimals = await getJettonDecimals(client, ftoken)
 
   const coins = parseAmount(amount, Number(jettonDecimals || 9))
 

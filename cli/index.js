@@ -3,22 +3,17 @@ const { Command } = require('commander')
 const inquirer = require('inquirer')
 const ora = require('ora')
 
-const getNativeToken = blockchain => {
-  switch (blockchain) {
-    case 'sui':
-      return 'SUI'
-    case 'near':
-      return 'NEAR'
-    case 'aptos':
-      return 'APT'
-    case 'solana':
-      return 'SOL'
-    case 'ton':
-      return 'TON'
-    default:
-      return ''
-  }
+const chainConfig = {
+  sui: { nativeToken: 'SUI', needsSender: false, needsMemo: false },
+  near: { nativeToken: 'NEAR', needsSender: true, needsMemo: false },
+  aptos: { nativeToken: 'APT', needsSender: false, needsMemo: false },
+  solana: { nativeToken: 'SOL', needsSender: false, needsMemo: false },
+  ton: { nativeToken: 'TON', needsSender: false, needsMemo: true },
 }
+
+const supportChains = Object.keys(chainConfig)
+
+const getNativeToken = blockchain => chainConfig[blockchain]?.nativeToken || ''
 
 const getBlockChainIns = blockchain => {
   switch (blockchain) {
@@ -64,22 +59,28 @@ const transformer = value => {
 }
 
 const prompt = async config => {
-  const { blockchain, network, sender, privateKey, receiver, amount, ftoken, memo } =
-    config
-  const questions = []
+  let { blockchain } = config
+  const { network, sender, privateKey, receiver, amount, ftoken, memo } = config
 
-  const supportChains = ['sui', 'near', 'aptos', 'solana', 'ton']
-
+  // Phase 1: Determine blockchain first
   if (!supportChains.includes(blockchain)) {
-    questions.push({
-      name: 'blockchain',
-      message: 'select a blockchain',
-      type: 'list',
-      choices: supportChains,
-    })
+    const answer = await inquirer.prompt([
+      {
+        name: 'blockchain',
+        message: 'select a blockchain',
+        type: 'list',
+        choices: supportChains,
+      },
+    ])
+    blockchain = answer.blockchain
   }
 
-  if (!sender) {
+  const chain = chainConfig[blockchain]
+
+  // Phase 2: Ask only chain-relevant questions
+  const questions = []
+
+  if (chain.needsSender && !sender) {
     questions.push({
       name: 'sender',
       message: 'enter a sender address',
@@ -136,11 +137,10 @@ const prompt = async config => {
     })
   }
 
-  if (!memo) {
+  if (chain.needsMemo && !memo) {
     questions.push({
       name: 'memo',
-      message:
-        'enter a memo if it\'s a TON network and the memo exists (Optional)',
+      message: 'enter a memo (Optional)',
       type: 'input',
     })
   }
@@ -154,24 +154,28 @@ const prompt = async config => {
 
   const result = {
     ...config,
+    blockchain,
     ...answers,
   }
 
   if (!config.yes) {
-    const res = await inquirer.prompt([
-      {
-        name: 'ok',
-        message: `Please confirm the transfer information 
+    const confirmMsg = `Please confirm the transfer information
   blockchain: ${result.blockchain}
-  sender:     ${result.sender}
-  receiver:   ${result.receiver}
+  ${chain.needsSender ? `sender:     ${result.sender}\n  ` : ''}receiver:   ${
+      result.receiver
+    }
   amount:     ${result.amount}
   network:    ${result.network}
   token:      ${result.ftoken || getNativeToken(result.blockchain)}
   privateKey: ${result.privateKey}
-  ${result.rpc ? `rpcURL:     ${result.rpc}` : ''}
-  ${result.memo ? `memo:  ${result.memo}` : ''}
-`,
+  ${result.rpc ? `rpcURL:     ${result.rpc}\n  ` : ''}${
+      chain.needsMemo && result.memo ? `memo:       ${result.memo}\n  ` : ''
+    }`
+
+    const res = await inquirer.prompt([
+      {
+        name: 'ok',
+        message: confirmMsg,
         type: 'confirm',
       },
     ])
@@ -217,10 +221,10 @@ const main = async () => {
 
   program
     .command('transfer')
-    .description('make a NEAR/SUI/APT or other fungible token transfer')
+    .description('make a NEAR/SUI/APT/SOL/TON or other fungible token transfer')
     .argument(
       '[blockchain]',
-      'blockchain. currently supports SUI/NEAR/APTOS chains'
+      'blockchain. currently supports SUI/NEAR/APTOS/SOLANA/TON chains'
     )
     .argument('[sender]', 'sender address')
     .argument('[receiver]', 'receiver address')
@@ -233,10 +237,7 @@ const main = async () => {
       '-t, --ftoken <ftoken>',
       'fungible token contract address. (Default is native token)'
     )
-    .option(
-      '-m, --memo <memo>',
-      'TON MEMO. (Optional)'
-    )
+    .option('-m, --memo <memo>', 'TON MEMO. (Optional)')
     .action(action)
 
   await program.parseAsync()

@@ -23,12 +23,20 @@ const patchFetch = () => {
     let method
     try {
       method = JSON.parse(args[1].body).method
-    } catch (err) { /* empty */ }
+    } catch (err) {
+      /* empty */
+    }
     if (method === 'broadcast_tx_commit') {
       const res = await originFetch(...args)
       const json = await res.json()
-      if (json?.result?.status?.SuccessValue === '' && json?.result?.transaction?.hash) {
-        json.result.status.SuccessValue = Buffer.from(json.result.transaction.hash, 'utf8').toString('base64')
+      if (
+        json?.result?.status?.SuccessValue === '' &&
+        json?.result?.transaction?.hash
+      ) {
+        json.result.status.SuccessValue = Buffer.from(
+          json.result.transaction.hash,
+          'utf8'
+        ).toString('base64')
       }
       return new fetch.Response(JSON.stringify(json), res)
     }
@@ -69,9 +77,9 @@ const createAccount = async config => {
   const { sender, network, privateKey, rpc } = config
   let nodeUrl
   if (network === 'mainnet') {
-    nodeUrl = 'https://rpc.ankr.com/near'
+    nodeUrl = 'https://free.rpc.fastnear.com'
   } else {
-    nodeUrl = 'https://rpc.eu-north-1.gateway.fm/v4/near/non-archival/testnet'
+    nodeUrl = 'https://test.rpc.fastnear.com'
   }
   const near = await nearAPI.connect({
     networkId: network,
@@ -86,7 +94,10 @@ const transfer = async config => {
   const account = await createAccount(config)
   const amt = nearAPI.utils.format.parseNearAmount(String(amount))
   const result = await account.sendMoney(receiver, amt)
-  const explorer = `https://explorer.${network}.near.org/transactions/${result.transaction.hash}`
+  const explorer =
+    network === 'testnet'
+      ? `https://testnet.nearblocks.io/txns/${result.transaction.hash}`
+      : `https://nearblocks.io/txns/${result.transaction.hash}`
   logReceipt('NEAR', explorer)
 }
 
@@ -94,8 +105,12 @@ const ftTransfer = async config => {
   const { receiver, ftoken, amount, network } = config
   const account = await createAccount(config)
   const contract = new nearAPI.Contract(account, ftoken, {
-    viewMethods: ['storage_balance_of', 'ft_metadata', 'storage_balance_bounds'],
-    changeMethods: ['ft_transfer', 'storage_deposit']
+    viewMethods: [
+      'storage_balance_of',
+      'ft_metadata',
+      'storage_balance_bounds',
+    ],
+    changeMethods: ['ft_transfer', 'storage_deposit'],
   })
 
   const [balance, metadata] = await Promise.all([
@@ -119,7 +134,10 @@ const ftTransfer = async config => {
     amount: 1,
   })
   if (hash) {
-    const explorer = `https://explorer.${network}.near.org/transactions/${hash}`
+    const explorer =
+      network === 'testnet'
+        ? `https://testnet.nearblocks.io/txns/${hash}`
+        : `https://nearblocks.io/txns/${hash}`
     logReceipt('NEAR', explorer)
   }
 }

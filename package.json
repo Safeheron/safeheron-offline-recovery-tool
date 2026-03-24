@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "@aptos-labs/ts-sdk": "^4.0.0",
-    "@mysten/sui.js": "^0.35.1",
+    "@mysten/sui": "^1.45.2",
     "@noble/hashes": "^1.3.2",
     "@psf/bch-js": "^6.4.5",
     "@safeheron/crypto-bip32": "^2.0.1",

@@ -181,12 +181,18 @@ const ftTransfer = async config => {
     new PublicKey(receiver),
   )
 
+  try {
+    await getAccount(mainConnection, sourceAccountAddress)
+  } catch (err) {
+    if (err instanceof TokenAccountNotFoundError || err instanceof TokenInvalidAccountOwnerError) {
+      throw new Error(`Sender has no token account for this mint. Please ensure the sender holds ${ftoken} tokens.`)
+    }
+    throw err
+  }
+
   const instructions = []
   try {
-    await getAccount(
-      mainConnection,
-      destinationAccountAddress
-    )
+    await getAccount(mainConnection, destinationAccountAddress)
   } catch (err) {
     if (err instanceof TokenAccountNotFoundError || err instanceof TokenInvalidAccountOwnerError) {
       instructions.push(
