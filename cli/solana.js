@@ -46,11 +46,17 @@ const logReceiptSuccess = explorer => {
 }
 
 const logReceiptFail = explorer => {
-  console.log('\x1b[31m%s\x1b[0m', 'Transaction confirmation timeout. Please open the blockexplorer to see the transaction information!')
-  console.log('\x1b[33m%s\x1b[0m', `
+  console.log(
+    '\x1b[31m%s\x1b[0m',
+    'Transaction confirmation timeout. Please open the blockexplorer to see the transaction information!'
+  )
+  console.log(
+    '\x1b[33m%s\x1b[0m',
+    `
 Note: Solana may drop transactions when the blocknetwork is congested. 
 If you are unable to see the transaction information on the blockexplorer for a long time (90 seconds), the transaction may have been dropped, try sending the transaction again using the CLI.
-  `)
+  `
+  )
   logExplore(explorer)
 }
 
@@ -86,17 +92,19 @@ class MPCSigner {
 const createConnectionCluster = (network, rpc) => {
   let endpoints = [rpc, clusterApiUrl('testnet')]
   if (network === 'mainnet') {
-    endpoints = [
-      rpc,
-      clusterApiUrl('mainnet-beta'),
-      'https://mainnet.helius-rpc.com/?api-key=efc82eb1-8237-4c46-b915-dee916dd3bd7',
-      'https://solana-mainnet.g.alchemy.com/v2/dZLUXuysijJ6qUzN0kX35ixbnfOO8qsj',
-    ]
+    endpoints = [rpc, clusterApiUrl('mainnet-beta')]
   }
-  return endpoints.filter(Boolean).map(endpoint => new Connection(endpoint, 'confirmed'))
+  return endpoints
+    .filter(Boolean)
+    .map(endpoint => new Connection(endpoint, 'confirmed'))
 }
 
-const sendTransactionByCluster = async (cluster, signer, instructions, network) => {
+const sendTransactionByCluster = async (
+  cluster,
+  signer,
+  instructions,
+  network
+) => {
   const mainConnection = cluster[0]
   const latestBlockhash = await mainConnection.getLatestBlockhash()
   const messageV0 = new TransactionMessage({
@@ -112,7 +120,9 @@ const sendTransactionByCluster = async (cluster, signer, instructions, network) 
   const transaction = new CustomVersionedTransaction(messageV0)
   await transaction.sign([signer])
 
-  const ps = cluster.map(connection => connection.sendTransaction(transaction, { maxRetries: 30 }))
+  const ps = cluster.map(connection =>
+    connection.sendTransaction(transaction, { maxRetries: 30 })
+  )
   const results = await Promise.allSettled(ps)
 
   const resultFulfilled = results.find(result => result.status === 'fulfilled')
@@ -149,7 +159,9 @@ const transfer = async config => {
     SystemProgram.transfer({
       fromPubkey: signer.publicKey,
       toPubkey: new PublicKey(receiver),
-      lamports: BigInt(new BigNumber(amount).multipliedBy(LAMPORTS_PER_SOL).toString()),
+      lamports: BigInt(
+        new BigNumber(amount).multipliedBy(LAMPORTS_PER_SOL).toString()
+      ),
     }),
   ]
 
@@ -173,19 +185,24 @@ const ftTransfer = async config => {
 
   const sourceAccountAddress = getAssociatedTokenAddressSync(
     mintAddress,
-    signer.publicKey,
+    signer.publicKey
   )
 
   const destinationAccountAddress = getAssociatedTokenAddressSync(
     mintAddress,
-    new PublicKey(receiver),
+    new PublicKey(receiver)
   )
 
   try {
     await getAccount(mainConnection, sourceAccountAddress)
   } catch (err) {
-    if (err instanceof TokenAccountNotFoundError || err instanceof TokenInvalidAccountOwnerError) {
-      throw new Error(`Sender has no token account for this mint. Please ensure the sender holds ${ftoken} tokens.`)
+    if (
+      err instanceof TokenAccountNotFoundError ||
+      err instanceof TokenInvalidAccountOwnerError
+    ) {
+      throw new Error(
+        `Sender has no token account for this mint. Please ensure the sender holds ${ftoken} tokens.`
+      )
     }
     throw err
   }
@@ -194,13 +211,16 @@ const ftTransfer = async config => {
   try {
     await getAccount(mainConnection, destinationAccountAddress)
   } catch (err) {
-    if (err instanceof TokenAccountNotFoundError || err instanceof TokenInvalidAccountOwnerError) {
+    if (
+      err instanceof TokenAccountNotFoundError ||
+      err instanceof TokenInvalidAccountOwnerError
+    ) {
       instructions.push(
         createAssociatedTokenAccountInstruction(
           signer.publicKey,
           destinationAccountAddress,
           new PublicKey(receiver),
-          mintAddress,
+          mintAddress
         )
       )
     } else {
@@ -213,8 +233,8 @@ const ftTransfer = async config => {
       sourceAccountAddress,
       destinationAccountAddress,
       signer.publicKey,
-      parseAmount(amount, decimals),
-    ),
+      parseAmount(amount, decimals)
+    )
   )
   await sendTransactionByCluster(cluster, signer, instructions, network)
 }

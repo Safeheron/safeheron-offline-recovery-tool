@@ -21,6 +21,64 @@ const fetch = require('node-fetch')
 
 const { logReceipt, parseAmount } = require('./utils')
 
+const isSafeUrl = url => {
+  let parsed
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+
+  if (parsed.protocol !== 'https:') {
+    return false
+  }
+
+  if (parsed.port && parsed.port !== '443') {
+    return false
+  }
+
+  const hostname = parsed.hostname.toLowerCase()
+
+  if (
+    hostname === 'localhost' ||
+    hostname === '0.0.0.0' ||
+    hostname === '[::1]'
+  ) {
+    return false
+  }
+
+  // Check IPv4 private ranges
+  const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/)
+  if (ipv4Match) {
+    const [, a, b] = ipv4Match.map(Number)
+    if (
+      a === 127 || // 127.0.0.0/8
+      a === 10 || // 10.0.0.0/8
+      a === 0 || // 0.0.0.0/8
+      (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
+      (a === 192 && b === 168) || // 192.168.0.0/16
+      (a === 169 && b === 254) // 169.254.0.0/16 link-local
+    ) {
+      return false
+    }
+  }
+
+  // Check IPv6 private ranges (bracketed in URLs)
+  if (hostname.startsWith('[')) {
+    const ipv6 = hostname.slice(1, -1).toLowerCase()
+    if (
+      ipv6 === '::1' ||
+      ipv6.startsWith('fc') ||
+      ipv6.startsWith('fd') ||
+      ipv6.startsWith('fe80')
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
 const getUserJettonWalletAddress = async (
   userAddress,
   jettonMasterAddress,
@@ -78,6 +136,9 @@ const getJettonDecimals = async (client, jettonMasterAddress) => {
   } else if (prefix === 0x01) {
     // off-chain: fetch the metadata URI
     const uri = slice.loadStringTail()
+    if (!isSafeUrl(uri)) {
+      return fallbackDecimals
+    }
     try {
       const res = await fetch(uri)
       const json = await res.json()

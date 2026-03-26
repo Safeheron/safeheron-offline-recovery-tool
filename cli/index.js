@@ -115,8 +115,14 @@ const prompt = async config => {
     questions.push({
       name: 'privateKey',
       message: 'enter a private key',
-      type: 'input',
+      type: 'password',
+      mask: '*',
     })
+  } else {
+    console.warn(
+      '\x1b[33m⚠ Warning: Passing private key via CLI argument is insecure (visible in shell history and process list). ' +
+        'Consider omitting -k and using the interactive prompt instead.\x1b[0m'
+    )
   }
 
   if (network !== 'mainnet' && network !== 'testnet') {

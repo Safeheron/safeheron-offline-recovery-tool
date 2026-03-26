@@ -36,3 +36,14 @@ amount     # value is transfer amount
 --memo, -m        # TON memo value. (Optional)
 --yes, -y         # automatic yes to prompts. (Optional)
 ```
+
+### RPC Node Notice
+> The default RPC endpoints built into the CLI are public nodes that may be subject to rate limiting or require no authentication. For production use, it is recommended to register your own API key with the corresponding blockchain RPC provider and pass your custom RPC URL via the `-r` flag:
+> ```bash
+> node ./cli/index.js transfer <blockchain> <sender> <receiver> <amount> -r <your-custom-rpc-url>
+> ```
+
+### Security Notice
+> **Warning:** Avoid passing your private key via the `-k` flag in production. Command-line arguments are visible in shell history (`~/.bash_history`, `~/.zsh_history`) and process listings (`ps aux`), which may expose your key to other users on the same machine.
+>
+> **Recommended:** Omit the `-k` flag and enter your private key through the interactive prompt instead — the input will be masked and will not be logged.

@@ -16,35 +16,39 @@ const { parseAmount, logReceipt } = require('./utils')
 
 // solve the near-js-api function_call only returns SuccessValue
 // this is a hack that may break with near-api-js upgrades
-const patchFetch = () => {
-  const originFetch = global.fetch
-
-  global.fetch = async (...args) => {
-    let method
-    try {
-      method = JSON.parse(args[1].body).method
-    } catch (err) {
-      /* empty */
-    }
-    if (method === 'broadcast_tx_commit') {
-      const res = await originFetch(...args)
-      const json = await res.json()
-      if (
-        json?.result?.status?.SuccessValue === '' &&
-        json?.result?.transaction?.hash
-      ) {
-        json.result.status.SuccessValue = Buffer.from(
-          json.result.transaction.hash,
-          'utf8'
-        ).toString('base64')
-      }
-      return new fetch.Response(JSON.stringify(json), res)
-    }
-    return originFetch(...args)
+const patchedFetch = async (...args) => {
+  let method
+  try {
+    method = JSON.parse(args[1].body).method
+  } catch (err) {
+    /* empty */
   }
+  if (method === 'broadcast_tx_commit') {
+    const res = await fetch(...args)
+    const json = await res.json()
+    if (
+      json?.result?.status?.SuccessValue === '' &&
+      json?.result?.transaction?.hash
+    ) {
+      json.result.status.SuccessValue = Buffer.from(
+        json.result.transaction.hash,
+        'utf8'
+      ).toString('base64')
+    }
+    return new fetch.Response(JSON.stringify(json), res)
+  }
+  return fetch(...args)
 }
 
-patchFetch()
+const withPatchedFetch = async fn => {
+  const originalFetch = global.fetch
+  global.fetch = patchedFetch
+  try {
+    return await fn()
+  } finally {
+    global.fetch = originalFetch
+  }
+}
 
 class MPCSigner extends nearAPI.Signer {
   constructor(privateKey) {
@@ -93,7 +97,7 @@ const transfer = async config => {
   const { amount, receiver, network } = config
   const account = await createAccount(config)
   const amt = nearAPI.utils.format.parseNearAmount(String(amount))
-  const result = await account.sendMoney(receiver, amt)
+  const result = await withPatchedFetch(() => account.sendMoney(receiver, amt))
   const explorer =
     network === 'testnet'
       ? `https://testnet.nearblocks.io/txns/${result.transaction.hash}`
@@ -126,13 +130,15 @@ const ftTransfer = async config => {
       amount: bound.min,
     })
   }
-  const hash = await contract.ft_transfer({
-    args: {
-      receiver_id: receiver,
-      amount: parseAmount(amount, metadata.decimals).toString(),
-    },
-    amount: 1,
-  })
+  const hash = await withPatchedFetch(() =>
+    contract.ft_transfer({
+      args: {
+        receiver_id: receiver,
+        amount: parseAmount(amount, metadata.decimals).toString(),
+      },
+      amount: 1,
+    })
+  )
   if (hash) {
     const explorer =
       network === 'testnet'
