@@ -41,8 +41,9 @@ export function csvParse<T>(csvStr: string): T[] {
     const item = parsedData[i]
     const missFields = requiredFields.filter(field => {
       if (field === CSV_FIELD_BLOCKCHAIN) {
-        const blockchain = item[field]?.toLowerCase?.()
-        const valid = SUPPORTED_BLOCKCHAIN.includes(blockchain)
+        const blockchain = item[field]
+        const normalizedBlockchain = blockchain?.toLowerCase?.()
+        const valid = SUPPORTED_BLOCKCHAIN.includes(normalizedBlockchain)
         if (!valid) {
           unsupportBlockChain.add(blockchain)
         }
