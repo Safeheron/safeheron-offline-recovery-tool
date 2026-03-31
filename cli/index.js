@@ -3,6 +3,11 @@ const { Command } = require('commander')
 const inquirer = require('inquirer')
 const ora = require('ora')
 
+const maskPrivateKey = key => {
+  if (!key || key.length <= 8) return '****'
+  return `${key.slice(0, 4)}****${key.slice(-4)}`
+}
+
 const chainConfig = {
   sui: { nativeToken: 'SUI', needsSender: false, needsMemo: false },
   near: { nativeToken: 'NEAR', needsSender: true, needsMemo: false },
@@ -173,7 +178,7 @@ const prompt = async config => {
   amount:     ${result.amount}
   network:    ${result.network}
   token:      ${result.ftoken || getNativeToken(result.blockchain)}
-  privateKey: ${result.privateKey}
+  privateKey: ${maskPrivateKey(result.privateKey)}
   ${result.rpc ? `rpcURL:     ${result.rpc}\n  ` : ''}${
       chain.needsMemo && result.memo ? `memo:       ${result.memo}\n  ` : ''
     }`

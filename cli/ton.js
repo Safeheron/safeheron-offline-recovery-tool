@@ -19,7 +19,7 @@ const {
 } = require('@ton/ton')
 const fetch = require('node-fetch')
 
-const { logReceipt, parseAmount } = require('./utils')
+const { logReceipt, parseAmount, startTaskPolling } = require('./utils')
 
 const isSafeUrl = url => {
   let parsed
@@ -179,11 +179,13 @@ const transfer = async config => {
   const contract = client.open(wallet)
 
   const seqno = await contract.getSeqno()
+  const parsedReceiver = Address.parseFriendly(receiver)
 
   const internalMessage = internal({
     value: amount,
-    to: receiver,
+    to: parsedReceiver.address,
     body: memo,
+    bounce: parsedReceiver.isBounceable,
   })
 
   const body = await contract.createTransfer({
@@ -192,9 +194,11 @@ const transfer = async config => {
     messages: [internalMessage],
   })
 
+  const isDeployed = await client.isContractDeployed(wallet.address)
+
   const externalMessage = external({
     to: wallet.address,
-    init: false,
+    init: isDeployed ? undefined : wallet.init,
     body,
   })
 
@@ -205,12 +209,23 @@ const transfer = async config => {
   const hash = externalMessageCell.hash().toString('hex')
   await client.sendFile(externalMessageCell.toBoc())
 
+  const confirmed = await startTaskPolling(
+    async () => (await contract.getSeqno()) > seqno,
+    3,
+    60
+  )
+
   const explorer =
     network === 'testnet'
       ? `https://testnet.tonviewer.com/transaction/${hash}`
       : `https://tonviewer.com/transaction/${hash}`
 
   logReceipt('TON', explorer)
+  if (!confirmed) {
+    console.log(
+      'Note: Transaction confirmation timed out. The transaction may still be processing.'
+    )
+  }
 }
 
 const ftTransfer = async config => {
@@ -288,12 +303,23 @@ const ftTransfer = async config => {
   const hash = externalMessageCell.hash().toString('hex')
   await client.sendFile(signedTransaction)
 
+  const confirmed = await startTaskPolling(
+    async () => (await contract.getSeqno()) > seqno,
+    3,
+    60
+  )
+
   const explorer =
     network === 'testnet'
       ? `https://testnet.tonviewer.com/transaction/${hash}`
       : `https://tonviewer.com/transaction/${hash}`
 
   logReceipt('TON', explorer)
+  if (!confirmed) {
+    console.log(
+      'Note: Transaction confirmation timed out. The transaction may still be processing.'
+    )
+  }
 }
 
 const handleException = err => {
