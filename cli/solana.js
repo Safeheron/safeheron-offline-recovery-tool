@@ -129,7 +129,7 @@ const sendTransactionByCluster = async (
 
   const resultFulfilled = results.find(result => result.status === 'fulfilled')
   if (!resultFulfilled) {
-    throw results[0]
+    throw results[0].reason
   }
 
   const txid = resultFulfilled.value
@@ -241,7 +241,7 @@ const ftTransfer = async config => {
   await sendTransactionByCluster(cluster, signer, instructions, network)
 }
 
-const handleException = err => err?.message
+const handleException = err => err?.transactionMessage || err?.message
 
 module.exports = {
   transfer,
