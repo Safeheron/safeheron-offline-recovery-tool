@@ -36,6 +36,7 @@ import {
   SOLANA_CHAIN,
   TON_CHAIN,
   TON_TEST_CHAIN,
+  TON_TEST_CHAIN_ALIAS,
   DOGE_CHAIN,
   DOGE_TEST_CHAIN,
   LTC_TEST_CHAIN,
@@ -184,6 +185,7 @@ const validateAddress = (
       break
     case TON_CHAIN:
     case TON_TEST_CHAIN:
+    case TON_TEST_CHAIN_ALIAS:
       derivedAddress = blockchainUtil.ton.derivedAddress(pubhex)
       break
     case LIQUID_CHAIN:

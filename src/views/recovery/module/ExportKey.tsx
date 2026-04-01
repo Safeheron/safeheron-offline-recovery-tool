@@ -9,7 +9,7 @@ import { csvStringify } from '@/utils/csv'
 import { useTranslation } from '@/i18n'
 import { useVersion } from '@/components/SelectVersion'
 import ErrorMsg from '@/components/ErrorMsg'
-import { APTOS_CHAIN, LIQUID_CHAIN, LIQUID_TEST_CHAIN, NEAR_CHAIN, SOLANA_CHAIN, SUI_CHAIN, TON_CHAIN, TON_TEST_CHAIN } from '@/utils/const'
+import { APTOS_CHAIN, LIQUID_CHAIN, LIQUID_TEST_CHAIN, NEAR_CHAIN, SOLANA_CHAIN, SUI_CHAIN, TON_CHAIN, TON_TEST_CHAIN, TON_TEST_CHAIN_ALIAS } from '@/utils/const'
 import { LiquidSDK } from '@/wasm/liquidSDK'
 
 export interface RecoveryItemModel {
@@ -36,7 +36,7 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
 
   const ed25519Chains = useMemo(() => {
     if (Array.isArray(data.csvJson)) {
-      const result = data.csvJson.filter(account => [TON_CHAIN, TON_TEST_CHAIN, NEAR_CHAIN, APTOS_CHAIN, SUI_CHAIN, SOLANA_CHAIN].includes(account['Blockchain Type'].toLowerCase()))
+      const result = data.csvJson.filter(account => [TON_CHAIN, TON_TEST_CHAIN, TON_TEST_CHAIN_ALIAS, NEAR_CHAIN, APTOS_CHAIN, SUI_CHAIN, SOLANA_CHAIN].includes(account['Blockchain Type'].toLowerCase()))
       return [...new Set(result.map(item => item['Blockchain Type']))]
     }
     return []
