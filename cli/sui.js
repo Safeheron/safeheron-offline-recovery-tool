@@ -12,6 +12,7 @@ const {
 const BigNumber = require('bignumber.js')
 
 const { parseAmount, logReceipt } = require('./utils')
+const { validateCustomRpcUrl } = require('./rpc')
 
 class MPCSigner extends Signer {
   constructor(privateKey) {
@@ -37,7 +38,7 @@ class MPCSigner extends Signer {
 }
 
 const getClient = (network, rpc) => {
-  const url = rpc || getFullnodeUrl(network)
+  const url = validateCustomRpcUrl(rpc) || getFullnodeUrl(network)
   return new SuiClient({ url })
 }
 
@@ -107,9 +108,7 @@ const ftTransfer = async config => {
   logReceipt('SUI', explorer)
 }
 
-const handleException = err => {
-  console.log(err)
-}
+const handleException = err => err?.message
 
 const getTargetCoinObjects = async (client, ftoken, owner) => {
   const res = await client.getCoins({

@@ -20,64 +20,7 @@ const {
 const fetch = require('node-fetch')
 
 const { logReceipt, parseAmount, startTaskPolling } = require('./utils')
-
-const isSafeUrl = url => {
-  let parsed
-  try {
-    parsed = new URL(url)
-  } catch {
-    return false
-  }
-
-  if (parsed.protocol !== 'https:') {
-    return false
-  }
-
-  if (parsed.port && parsed.port !== '443') {
-    return false
-  }
-
-  const hostname = parsed.hostname.toLowerCase()
-
-  if (
-    hostname === 'localhost' ||
-    hostname === '0.0.0.0' ||
-    hostname === '[::1]'
-  ) {
-    return false
-  }
-
-  // Check IPv4 private ranges
-  const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/)
-  if (ipv4Match) {
-    const [, a, b] = ipv4Match.map(Number)
-    if (
-      a === 127 || // 127.0.0.0/8
-      a === 10 || // 10.0.0.0/8
-      a === 0 || // 0.0.0.0/8
-      (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
-      (a === 192 && b === 168) || // 192.168.0.0/16
-      (a === 169 && b === 254) // 169.254.0.0/16 link-local
-    ) {
-      return false
-    }
-  }
-
-  // Check IPv6 private ranges (bracketed in URLs)
-  if (hostname.startsWith('[')) {
-    const ipv6 = hostname.slice(1, -1).toLowerCase()
-    if (
-      ipv6 === '::1' ||
-      ipv6.startsWith('fc') ||
-      ipv6.startsWith('fd') ||
-      ipv6.startsWith('fe80')
-    ) {
-      return false
-    }
-  }
-
-  return true
-}
+const { isSafeUrl, validateCustomRpcUrl } = require('./rpc')
 
 const getUserJettonWalletAddress = async (
   userAddress,
@@ -164,11 +107,12 @@ const publicRPC = {
 
 const transfer = async config => {
   const { amount, receiver, network, privateKey, rpc, memo } = config
+  const rpcEndpoint = validateCustomRpcUrl(rpc)
 
   const pubHex = ed25519_get_pubkey_hex(privateKey)
 
   const client = new TonClient({
-    endpoint: rpc || publicRPC[network],
+    endpoint: rpcEndpoint || publicRPC[network],
   })
 
   const wallet = WalletContractV4.create({
@@ -230,11 +174,12 @@ const transfer = async config => {
 
 const ftTransfer = async config => {
   const { amount, receiver, network, privateKey, rpc, ftoken, memo } = config
+  const rpcEndpoint = validateCustomRpcUrl(rpc)
 
   const pubHex = ed25519_get_pubkey_hex(privateKey)
 
   const client = new TonClient({
-    endpoint: rpc || publicRPC[network],
+    endpoint: rpcEndpoint || publicRPC[network],
   })
 
   const wallet = WalletContractV4.create({
@@ -289,9 +234,11 @@ const ftTransfer = async config => {
     messages: [internalMessage],
   })
 
+  const isDeployed = await client.isContractDeployed(wallet.address)
+
   const externalMessage = external({
     to: wallet.address,
-    init: false,
+    init: isDeployed ? undefined : wallet.init,
     body,
   })
 
@@ -322,9 +269,7 @@ const ftTransfer = async config => {
   }
 }
 
-const handleException = err => {
-  console.log(err)
-}
+const handleException = err => err?.message
 
 module.exports = {
   transfer,

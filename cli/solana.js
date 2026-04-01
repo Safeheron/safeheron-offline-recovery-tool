@@ -28,6 +28,7 @@ const {
 const BigNumber = require('bignumber.js')
 
 const { parseAmount } = require('./utils')
+const { validateCustomRpcUrl } = require('./rpc')
 
 const logExplore = explorer => {
   console.log(
@@ -90,9 +91,10 @@ class MPCSigner {
 }
 
 const createConnectionCluster = (network, rpc) => {
-  let endpoints = [rpc, clusterApiUrl('testnet')]
+  const rpcEndpoint = validateCustomRpcUrl(rpc)
+  let endpoints = [rpcEndpoint, clusterApiUrl('testnet')]
   if (network === 'mainnet') {
-    endpoints = [rpc, clusterApiUrl('mainnet-beta')]
+    endpoints = [rpcEndpoint, clusterApiUrl('mainnet-beta')]
   }
   return endpoints
     .filter(Boolean)
@@ -239,9 +241,7 @@ const ftTransfer = async config => {
   await sendTransactionByCluster(cluster, signer, instructions, network)
 }
 
-const handleException = err => {
-  console.log(err)
-}
+const handleException = err => err?.message
 
 module.exports = {
   transfer,

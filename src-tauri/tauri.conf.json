@@ -42,13 +42,18 @@
     },
     "allowlist": {
       "dialog": {
-        "all": true
+        "open": true,
+        "save": true
       },
       "window": {
-        "all": true
+        "create": true,
+        "close": true,
+        "setFocus": true
       },
       "fs": {
-        "all": true
+        "readFile": true,
+        "writeFile": true,
+        "scope": []
       }
     },
     "windows": [
@@ -61,7 +66,8 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' asset: tauri: ipc: http://ipc.localhost https://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost; img-src 'self' asset: data: blob:; media-src 'self' asset: data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+      "devCsp": "default-src 'self' http://localhost:5000 ws://localhost:5000 asset: tauri: ipc: http://ipc.localhost https://ipc.localhost; connect-src 'self' http://localhost:5000 ws://localhost:5000 ipc: http://ipc.localhost https://ipc.localhost; img-src 'self' http://localhost:5000 data: blob: asset:; media-src 'self' http://localhost:5000 data: blob: asset:; font-src 'self' http://localhost:5000 data:; style-src 'self' 'unsafe-inline' http://localhost:5000; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' http://localhost:5000; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     }
   }
 }
