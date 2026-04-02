@@ -16,6 +16,7 @@ const {
   external,
   storeMessage,
   comment,
+  SendMode,
 } = require('@ton/ton')
 const fetch = require('node-fetch')
 
@@ -136,6 +137,7 @@ const transfer = async config => {
     seqno,
     signer: cell => mpcSigner(cell, privateKey),
     messages: [internalMessage],
+    sendMode: SendMode.PAY_GAS_SEPARATELY,
   })
 
   const isDeployed = await client.isContractDeployed(wallet.address)
@@ -209,7 +211,7 @@ const ftTransfer = async config => {
     .storeAddress(Address.parse(receiver))
     .storeAddress(Address.parse(sender)) // response destination
     .storeBit(0) // no custom payload
-    .storeCoins(toNano(0.01)) // forward amount - if > 0, will send notification message
+    .storeCoins(toNano('0.01')) // forward amount - if > 0, will send notification message
 
   let messageBodyCell
   if (memo) {
@@ -232,6 +234,7 @@ const ftTransfer = async config => {
     seqno,
     signer: cell => mpcSigner(cell, privateKey),
     messages: [internalMessage],
+    sendMode: SendMode.PAY_GAS_SEPARATELY,
   })
 
   const isDeployed = await client.isContractDeployed(wallet.address)
