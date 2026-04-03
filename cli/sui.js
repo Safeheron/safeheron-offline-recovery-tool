@@ -1,99 +1,72 @@
 /* eslint-disable no-console */
 /* eslint-disable camelcase */
 
-const {
-  TransactionBlock,
-  JsonRpcProvider,
-  SignerWithProvider,
-  toSerializedSignature,
-  Ed25519PublicKey,
-  Connection,
-} = require('@mysten/sui.js')
+const { Transaction } = require('@mysten/sui/transactions')
+const { SuiClient, getFullnodeUrl } = require('@mysten/sui/client')
+const { Signer } = require('@mysten/sui/cryptography')
+const { Ed25519PublicKey } = require('@mysten/sui/keypairs/ed25519')
 const {
   ed25519_sign,
   ed25519_get_pubkey_hex,
 } = require('@safeheron/master-key-derive')
-const { blake2b } = require('blakejs')
 const BigNumber = require('bignumber.js')
 
 const { parseAmount, logReceipt } = require('./utils')
+const { validateCustomRpcUrl } = require('./rpc')
 
-const mainnetConnection = new Connection({
-  fullnode: 'https://sui-mainnet-rpc.allthatnode.com',
-})
-
-const testnetConnection = new Connection({
-  fullnode: 'https://sui-testnet-rpc.allthatnode.com',
-})
-
-class MPCSigner extends SignerWithProvider {
-  constructor(privateKey, provider) {
-    super(provider)
+class MPCSigner extends Signer {
+  constructor(privateKey) {
+    super()
     const pubHex = ed25519_get_pubkey_hex(privateKey)
     const publicKey = Buffer.from(pubHex, 'hex')
     this.publicKey = new Ed25519PublicKey(publicKey)
     this.privateKey = privateKey
   }
 
-  getAddress() {
-    return this.publicKey.toSuiAddress()
+  getKeyScheme() {
+    return 'ED25519'
   }
 
-  async signData(data) {
-    const digest = blake2b(data, undefined, 32)
-    const sigHex = await ed25519_sign(this.privateKey, digest)
-
-    return toSerializedSignature({
-      signatureScheme: 'ED25519',
-      signature: Buffer.from(sigHex, 'hex'),
-      pubKey: this.publicKey,
-    })
+  getPublicKey() {
+    return this.publicKey
   }
+
+  async sign(bytes) {
+    const sigHex = await ed25519_sign(this.privateKey, bytes)
+    return Buffer.from(sigHex, 'hex')
+  }
+}
+
+const getClient = (network, rpc) => {
+  const url = validateCustomRpcUrl(rpc) || getFullnodeUrl(network)
+  return new SuiClient({ url })
 }
 
 const transfer = async config => {
   const { amount, receiver, network, privateKey, rpc } = config
-  let connect
-  if (rpc) {
-    connect = new Connection({
-      fullnode: rpc,
-    })
-  } else {
-    connect = network === 'mainnet' ? mainnetConnection : testnetConnection
-  }
-  const signer = new MPCSigner(
-    privateKey,
-    new JsonRpcProvider(connect)
-  )
-  const tx = new TransactionBlock()
-  const [coin] = tx.splitCoins(tx.gas, [tx.pure(parseAmount(amount, 9))])
-  tx.transferObjects([coin], tx.pure(receiver))
-  const result = await signer.signAndExecuteTransactionBlock({
-    transactionBlock: tx,
+  const client = getClient(network, rpc)
+  const signer = new MPCSigner(privateKey)
+  const tx = new Transaction()
+  const [coin] = tx.splitCoins(tx.gas, [
+    tx.pure.u64(parseAmount(amount, 9).toFixed(0)),
+  ])
+  tx.transferObjects([coin], receiver)
+  const result = await client.signAndExecuteTransaction({
+    transaction: tx,
+    signer,
   })
-  const explorer = `https://suiexplorer.com/txblock/${result.digest}?network=${network}`
+  const explorer = `https://suiscan.xyz/${network}/tx/${result.digest}`
   logReceipt('SUI', explorer)
 }
 
 const ftTransfer = async config => {
   const { amount, receiver, network, privateKey, ftoken, rpc } = config
 
-  let connect
-  if (rpc) {
-    connect = new Connection({
-      fullnode: rpc,
-    })
-  } else {
-    connect = network === 'mainnet' ? mainnetConnection : testnetConnection
-  }
-  const provider = new JsonRpcProvider(connect)
-  const signer = new MPCSigner(
-    privateKey,
-    provider,
-  )
+  const client = getClient(network, rpc)
+  const signer = new MPCSigner(privateKey)
   const [coinMetadata, objects] = await Promise.all([
-    getCoinMetadata(provider, ftoken),
-    getTargetCoinObjects(provider, ftoken, signer.getAddress())
+    getCoinMetadata(client, ftoken),
+    getTargetCoinObjects(client, ftoken, signer.toSuiAddress()),
   ])
   const bigIntAmount = parseAmount(amount, coinMetadata.decimals)
   const len = objects.length
@@ -101,7 +74,7 @@ const ftTransfer = async config => {
     throw new Error('Insufficient balance')
   }
 
-  const tx = new TransactionBlock()
+  const tx = new Transaction()
 
   let bigIntBalance = new BigNumber(objects[0].balance)
 
@@ -117,36 +90,44 @@ const ftTransfer = async config => {
       throw new Error('Insufficient balance')
     }
 
-    tx.mergeCoins(primaryCoinInput, objects.slice(1, idx).map(coin => tx.object(coin.coinObjectId)))
+    tx.mergeCoins(
+      primaryCoinInput,
+      objects.slice(1, idx).map(coin => tx.object(coin.coinObjectId))
+    )
   }
 
-  const coin = tx.splitCoins(primaryCoinInput, [tx.pure(bigIntAmount)])
-  tx.transferObjects([coin], tx.pure(receiver))
-  const result = await signer.signAndExecuteTransactionBlock({
-    transactionBlock: tx,
+  const coin = tx.splitCoins(primaryCoinInput, [
+    tx.pure.u64(bigIntAmount.toFixed(0)),
+  ])
+  tx.transferObjects([coin], receiver)
+  const result = await client.signAndExecuteTransaction({
+    transaction: tx,
+    signer,
   })
-  const explorer = `https://suiexplorer.com/txblock/${result.digest}?network=${network}`
+  const explorer = `https://suiscan.xyz/${network}/tx/${result.digest}`
   logReceipt('SUI', explorer)
 }
 
-const handleException = err => {
-  console.log(err)
-}
+const handleException = err => err?.message
 
-const getTargetCoinObjects = async (provider, ftoken, owner) => {
-  const res = await provider.getCoins({
+const getTargetCoinObjects = async (client, ftoken, owner) => {
+  const res = await client.getCoins({
     owner,
     coinType: ftoken,
   })
-  const coinObjects = res.data
-    .sort((a, b) => b.balance - a.balance)
+  const coinObjects = res.data.sort((a, b) => b.balance - a.balance)
   return coinObjects
 }
 
-const getCoinMetadata = async (provider, ftoken) => {
-  const metadata = await provider.getCoinMetadata({
+const getCoinMetadata = async (client, ftoken) => {
+  const metadata = await client.getCoinMetadata({
     coinType: ftoken,
   })
+  if (!metadata) {
+    throw new Error(
+      `Failed to get coin metadata for ${ftoken}. The CoinMetadata object may not be shared or frozen.`
+    )
+  }
   return metadata
 }
 

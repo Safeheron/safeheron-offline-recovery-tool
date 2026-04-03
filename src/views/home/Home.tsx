@@ -1,9 +1,9 @@
 import styled from 'styled-components'
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
 
 import { HomeButton } from '@/components/base/Button'
 import { useTranslation, LanguageEnum, LanguageMap, LANGUAGE_KEY } from '@/i18n'
+import { emitMnemonicToKeyWindow } from '@/utils/mnemonicToKeyWindow'
 import mnemonic from '@img/mnemonic@2x.png'
 import recover from '@img/recover@2x.png'
 import arrow from '@img/arrow@2x.png'
@@ -15,9 +15,7 @@ const Home = () => {
   const changeLang = (lang: LanguageEnum) => {
     i18n.changeLanguage(lang)
     localStorage.setItem(LANGUAGE_KEY, lang)
-    if (window.mnemonicToKeyWindow) {
-      window.mnemonicToKeyWindow.emit('changeLang', lang)
-    }
+    emitMnemonicToKeyWindow('changeLang', lang)
   }
 
   return (

@@ -12,5 +12,6 @@ export default {
   },
   testTimeout: 30 * 1000,
   testEnvironment: 'jsdom',
-  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts']
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
+  transformIgnorePatterns: ['/node_modules/(?!(uuid)/)']
 }

@@ -13,17 +13,21 @@ const {
   Ed25519Signature,
   Ed25519PublicKey,
   AccountAuthenticatorEd25519,
-  generateSigningMessageForTransaction
+  generateSigningMessageForTransaction,
 } = require('@aptos-labs/ts-sdk')
 const BigNumber = require('bignumber.js')
 const { sha3_256: sha3Hash } = require('@noble/hashes/sha3')
 const { bytesToHex, hexToBytes } = require('@noble/hashes/utils')
 
 const { logReceipt } = require('./utils')
+const { validateCustomRpcUrl } = require('./rpc')
 
-const formatOctasToAPT = (octas) => {
-  const octasBigInt = typeof octas === 'bigint' ? octas : BigInt(octas.toString())
-  const apt = new BigNumber(octasBigInt.toString()).dividedBy(10 ** 8).toFixed(8)
+const formatOctasToAPT = octas => {
+  const octasBigInt =
+    typeof octas === 'bigint' ? octas : BigInt(octas.toString())
+  const apt = new BigNumber(octasBigInt.toString())
+    .dividedBy(10 ** 8)
+    .toFixed(8)
   return apt
 }
 
@@ -58,12 +62,13 @@ class MPCSigner {
 
 const transfer = async config => {
   const { amount, receiver, network, privateKey, rpc } = config
+  const rpcEndpoint = validateCustomRpcUrl(rpc)
 
   let aptosConfig
 
-  if (rpc) {
+  if (rpcEndpoint) {
     aptosConfig = new AptosConfig({
-      fullnode: rpc,
+      fullnode: rpcEndpoint,
     })
   } else {
     aptosConfig = new AptosConfig({
@@ -76,10 +81,12 @@ const transfer = async config => {
   const signer = new MPCSigner(privateKey)
 
   const accountAPTAmount = await aptos.getAccountAPTAmount({
-    accountAddress: signer.address
+    accountAddress: signer.address,
   })
 
-  const transferAmount = BigInt(new BigNumber(10 ** 8).multipliedBy(amount).toString())
+  const transferAmount = BigInt(
+    new BigNumber(10 ** 8).multipliedBy(amount).toString()
+  )
 
   const tempTransaction = await aptos.transferCoinTransaction({
     sender: signer.address,
@@ -87,13 +94,14 @@ const transfer = async config => {
     amount: transferAmount,
   })
 
-  const { estimatedMaxGasAmount, estimatedGasPrice } = await estimateGasAndCheckBalance({
-    aptos,
-    signer,
-    tempTransaction,
-    accountBalance: accountAPTAmount,
-    transferAmount,
-  })
+  const { estimatedMaxGasAmount, estimatedGasPrice } =
+    await estimateGasAndCheckBalance({
+      aptos,
+      signer,
+      tempTransaction,
+      accountBalance: accountAPTAmount,
+      transferAmount,
+    })
 
   const transaction = await aptos.transferCoinTransaction({
     sender: signer.address,
@@ -102,7 +110,7 @@ const transfer = async config => {
     options: {
       maxGasAmount: Number(estimatedMaxGasAmount),
       gasUnitPrice: Number(estimatedGasPrice),
-    }
+    },
   })
 
   const senderAuthenticator = await aptos.sign({ signer, transaction })
@@ -120,12 +128,13 @@ const transfer = async config => {
 
 const ftTransfer = async config => {
   const { amount, receiver, network, privateKey, rpc, ftoken } = config
+  const rpcEndpoint = validateCustomRpcUrl(rpc)
 
   let aptosConfig
 
-  if (rpc) {
+  if (rpcEndpoint) {
     aptosConfig = new AptosConfig({
-      fullnode: rpc,
+      fullnode: rpcEndpoint,
     })
   } else {
     aptosConfig = new AptosConfig({
@@ -138,7 +147,7 @@ const ftTransfer = async config => {
   const signer = new MPCSigner(privateKey)
 
   const accountAPTAmount = await aptos.getAccountAPTAmount({
-    accountAddress: signer.address
+    accountAddress: signer.address,
   })
 
   let decimals
@@ -148,7 +157,9 @@ const ftTransfer = async config => {
     decimals = await getFATokenDecimals(aptos, ftoken)
   }
 
-  const transferAmount = BigInt(new BigNumber(10).pow(decimals).multipliedBy(amount).toString())
+  const transferAmount = BigInt(
+    new BigNumber(10).pow(decimals).multipliedBy(amount).toString()
+  )
 
   let tempTransaction
   if (isCoin(ftoken)) {
@@ -169,12 +180,13 @@ const ftTransfer = async config => {
     })
   }
 
-  const { estimatedMaxGasAmount, estimatedGasPrice } = await estimateGasAndCheckBalance({
-    aptos,
-    signer,
-    tempTransaction,
-    accountBalance: accountAPTAmount,
-  })
+  const { estimatedMaxGasAmount, estimatedGasPrice } =
+    await estimateGasAndCheckBalance({
+      aptos,
+      signer,
+      tempTransaction,
+      accountBalance: accountAPTAmount,
+    })
 
   let transaction
   if (isCoin(ftoken)) {
@@ -186,7 +198,7 @@ const ftTransfer = async config => {
       options: {
         maxGasAmount: Number(estimatedMaxGasAmount),
         gasUnitPrice: Number(estimatedGasPrice),
-      }
+      },
     })
   } else {
     transaction = await aptos.transferFungibleAsset({
@@ -199,7 +211,7 @@ const ftTransfer = async config => {
       options: {
         maxGasAmount: Number(estimatedMaxGasAmount),
         gasUnitPrice: Number(estimatedGasPrice),
-      }
+      },
     })
   }
 
@@ -216,9 +228,7 @@ const ftTransfer = async config => {
   logReceipt('Aptos', explorer)
 }
 
-const handleException = err => {
-  console.log(err)
-}
+const handleException = err => err?.message
 
 const getCoinDecimals = async (aptos, ftoken) => {
   const [creatorAddress] = ftoken.split('::')
@@ -242,14 +252,22 @@ const isCoin = ftoken => {
   return ftoken?.split('::')?.length === 3
 }
 
-const estimateGasAndCheckBalance = async ({ aptos, signer, tempTransaction, accountBalance, transferAmount }) => {
+const estimateGasAndCheckBalance = async ({
+  aptos,
+  signer,
+  tempTransaction,
+  accountBalance,
+  transferAmount,
+}) => {
   const [simulationResult] = await aptos.transaction.simulate.simple({
     signerPublicKey: signer.publicKey,
     transaction: tempTransaction,
   })
 
   if (!simulationResult.success) {
-    throw new Error(`Transaction simulation failed: ${simulationResult.vm_status}`)
+    throw new Error(
+      `Transaction simulation failed: ${simulationResult.vm_status}`
+    )
   }
 
   const gasUsed = BigInt(simulationResult.gas_used.toString())
@@ -272,20 +290,20 @@ const estimateGasAndCheckBalance = async ({ aptos, signer, tempTransaction, acco
       const transferAPT = formatOctasToAPT(transferAmount)
       throw new Error(
         `Insufficient balance: account balance ${balance.toString()} octas (${balanceAPT} APT), ` +
-        `required ${requiredAmount.toString()} octas (${requiredAPT} APT), ` +
-        `(transfer ${transferAmount.toString()} octas (${transferAPT} APT) + max fee ${maxFee.toString()} octas (${feeAPT} APT))`
+          `required ${requiredAmount.toString()} octas (${requiredAPT} APT), ` +
+          `(transfer ${transferAmount.toString()} octas (${transferAPT} APT) + max fee ${maxFee.toString()} octas (${feeAPT} APT))`
       )
     } else {
       throw new Error(
         `Insufficient balance to pay transaction max fee: account APT balance ${balance.toString()} octas (${balanceAPT} APT), ` +
-        `required ${maxFee.toString()} octas (${feeAPT} APT) for transaction max fee`
+          `required ${maxFee.toString()} octas (${feeAPT} APT) for transaction max fee`
       )
     }
   }
 
-  return { 
-    estimatedMaxGasAmount, 
-    estimatedGasPrice 
+  return {
+    estimatedMaxGasAmount,
+    estimatedGasPrice,
   }
 }
 

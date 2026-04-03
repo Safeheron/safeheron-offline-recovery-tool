@@ -1,9 +1,12 @@
 /* eslint-disable camelcase */
+const crypto = require('crypto')
+
 const {
   ed25519_get_pubkey_hex,
   ed25519_sign,
 } = require('@safeheron/master-key-derive')
 const {
+  Dictionary,
   WalletContractV4,
   TonClient,
   internal,
@@ -13,34 +16,12 @@ const {
   external,
   storeMessage,
   comment,
+  SendMode,
 } = require('@ton/ton')
 const fetch = require('node-fetch')
 
-const { logReceipt, startTaskPolling, parseAmount } = require('./utils')
-
-const onTransaction = (client, sender, receiver, amount, network) =>
-  startTaskPolling(
-    async () => {
-      const txs = await client.getTransactions(receiver, { limit: 3 })
-      const targetTx = txs.find(tx => {
-        const src = tx?.inMessage?.info?.src?.toString?.()
-        const coins = tx?.inMessage?.info?.value?.coins
-        return src === sender && coins === toNano(amount)
-      })
-      if (targetTx) {
-        const hash = targetTx.hash().toString('hex')
-        const explorer =
-          network === 'testnet'
-            ? `https://testnet.tonviewer.com/transaction/${hash}`
-            : `https://tonviewer.com/transaction/${hash}`
-        logReceipt('TON', explorer)
-        return true
-      }
-      return false
-    },
-    5,
-    60
-  )
+const { logReceipt, parseAmount, startTaskPolling } = require('./utils')
+const { isSafeUrl, validateCustomRpcUrl } = require('./rpc')
 
 const getUserJettonWalletAddress = async (
   userAddress,
@@ -60,23 +41,58 @@ const getUserJettonWalletAddress = async (
   return response.stack.readAddress()
 }
 
-const getJettonDecimals = async (jettonMasterAddress, network) => {
-  let url = 'https://toncenter.com/api/v2/getTokenData?address='
-  if (network === 'testnet') {
-    url = 'https://testnet.toncenter.com/api/v2/getTokenData?address='
-  }
-  const res = await fetch(url + jettonMasterAddress)
-  if (!res.ok) {
-    throw new Error('Failed to fetch jetton metadata')
-  }
-  try {
-    const data = await res.json()
-    if (data.ok) {
-      return data.result.jetton_content.data.decimals
+const sha256Key = name => {
+  const hash = crypto.createHash('sha256').update(name).digest()
+  return BigInt(`0x${hash.toString('hex')}`)
+}
+
+const getJettonDecimals = async (client, jettonMasterAddress) => {
+  const fallbackDecimals = 9
+  const result = await client.runMethod(
+    Address.parse(jettonMasterAddress),
+    'get_jetton_data'
+  )
+
+  result.stack.readBigNumber() // total_supply
+  result.stack.readNumber() // mintable
+  result.stack.readAddress() // admin_address
+  const jettonContent = result.stack.readCell()
+
+  const slice = jettonContent.beginParse()
+  const prefix = slice.loadUint(8)
+
+  if (prefix === 0x00) {
+    // on-chain TEP-64 content
+    const dict = slice.loadDict(
+      Dictionary.Keys.BigUint(256),
+      Dictionary.Values.Cell()
+    )
+    const decimalsCell = dict.get(sha256Key('decimals'))
+    if (decimalsCell) {
+      try {
+        const s = decimalsCell.beginParse()
+        s.loadUint(8) // snake prefix
+        return parseInt(s.loadStringTail()) || fallbackDecimals
+      } catch {
+        return fallbackDecimals
+      }
     }
-  } catch (err) {
-    throw new Error('Failed to fetch jetton decimals value')
+  } else if (prefix === 0x01) {
+    // off-chain: fetch the metadata URI
+    const uri = slice.loadStringTail()
+    if (!isSafeUrl(uri)) {
+      return fallbackDecimals
+    }
+    try {
+      const res = await fetch(uri)
+      const json = await res.json()
+      return parseInt(json.decimals) || fallbackDecimals
+    } catch {
+      return fallbackDecimals
+    }
   }
+
+  return fallbackDecimals // fallback
 }
 
 const mpcSigner = async (cell, privateKey) => {
@@ -92,11 +108,12 @@ const publicRPC = {
 
 const transfer = async config => {
   const { amount, receiver, network, privateKey, rpc, memo } = config
+  const rpcEndpoint = validateCustomRpcUrl(rpc)
 
   const pubHex = ed25519_get_pubkey_hex(privateKey)
 
   const client = new TonClient({
-    endpoint: rpc || publicRPC[network],
+    endpoint: rpcEndpoint || publicRPC[network],
   })
 
   const wallet = WalletContractV4.create({
@@ -107,33 +124,64 @@ const transfer = async config => {
   const contract = client.open(wallet)
 
   const seqno = await contract.getSeqno()
+  const parsedReceiver = Address.parseFriendly(receiver)
 
   const internalMessage = internal({
     value: amount,
-    to: receiver,
+    to: parsedReceiver.address,
     body: memo,
+    bounce: parsedReceiver.isBounceable,
   })
 
-  const transferV4Cell = await contract.createTransfer({
+  const body = await contract.createTransfer({
     seqno,
     signer: cell => mpcSigner(cell, privateKey),
     messages: [internalMessage],
+    sendMode: SendMode.PAY_GAS_SEPARATELY,
   })
 
-  await contract.send(transferV4Cell)
+  const isDeployed = await client.isContractDeployed(wallet.address)
 
-  const sender = wallet.address.toString()
+  const externalMessage = external({
+    to: wallet.address,
+    init: isDeployed ? undefined : wallet.init,
+    body,
+  })
 
-  return onTransaction(client, sender, receiver, amount, network)
+  const externalMessageCell = beginCell()
+    .store(storeMessage(externalMessage))
+    .endCell()
+
+  const hash = externalMessageCell.hash().toString('hex')
+  await client.sendFile(externalMessageCell.toBoc())
+
+  const confirmed = await startTaskPolling(
+    async () => (await contract.getSeqno()) > seqno,
+    3,
+    60
+  )
+
+  const explorer =
+    network === 'testnet'
+      ? `https://testnet.tonviewer.com/transaction/${hash}`
+      : `https://tonviewer.com/transaction/${hash}`
+
+  logReceipt('TON', explorer)
+  if (!confirmed) {
+    console.log(
+      'Note: Transaction confirmation timed out. The transaction may still be processing.'
+    )
+  }
 }
 
 const ftTransfer = async config => {
   const { amount, receiver, network, privateKey, rpc, ftoken, memo } = config
+  const rpcEndpoint = validateCustomRpcUrl(rpc)
 
   const pubHex = ed25519_get_pubkey_hex(privateKey)
 
   const client = new TonClient({
-    endpoint: rpc || publicRPC[network],
+    endpoint: rpcEndpoint || publicRPC[network],
   })
 
   const wallet = WalletContractV4.create({
@@ -146,9 +194,13 @@ const ftTransfer = async config => {
 
   const sender = wallet.address.toString()
 
-  const jettonWalletAddress = await getUserJettonWalletAddress(sender, ftoken, client)
+  const jettonWalletAddress = await getUserJettonWalletAddress(
+    sender,
+    ftoken,
+    client
+  )
 
-  const jettonDecimals = await getJettonDecimals(ftoken, network)
+  const jettonDecimals = await getJettonDecimals(client, ftoken)
 
   const coins = parseAmount(amount, Number(jettonDecimals || 9))
 
@@ -159,7 +211,7 @@ const ftTransfer = async config => {
     .storeAddress(Address.parse(receiver))
     .storeAddress(Address.parse(sender)) // response destination
     .storeBit(0) // no custom payload
-    .storeCoins(toNano(0.01)) // forward amount - if > 0, will send notification message
+    .storeCoins(toNano('0.01')) // forward amount - if > 0, will send notification message
 
   let messageBodyCell
   if (memo) {
@@ -182,11 +234,14 @@ const ftTransfer = async config => {
     seqno,
     signer: cell => mpcSigner(cell, privateKey),
     messages: [internalMessage],
+    sendMode: SendMode.PAY_GAS_SEPARATELY,
   })
+
+  const isDeployed = await client.isContractDeployed(wallet.address)
 
   const externalMessage = external({
     to: wallet.address,
-    init: false,
+    init: isDeployed ? undefined : wallet.init,
     body,
   })
 
@@ -198,17 +253,26 @@ const ftTransfer = async config => {
   const hash = externalMessageCell.hash().toString('hex')
   await client.sendFile(signedTransaction)
 
+  const confirmed = await startTaskPolling(
+    async () => (await contract.getSeqno()) > seqno,
+    3,
+    60
+  )
+
   const explorer =
     network === 'testnet'
       ? `https://testnet.tonviewer.com/transaction/${hash}`
       : `https://tonviewer.com/transaction/${hash}`
 
   logReceipt('TON', explorer)
+  if (!confirmed) {
+    console.log(
+      'Note: Transaction confirmation timed out. The transaction may still be processing.'
+    )
+  }
 }
 
-const handleException = err => {
-  console.log(err)
-}
+const handleException = err => err?.message
 
 module.exports = {
   transfer,
