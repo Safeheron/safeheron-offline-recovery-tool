@@ -105,6 +105,23 @@ test('array to csv string', () => {
   expect(str).toEqual(csvStr)
 })
 
+test('array to csv string should escape formula-like values', () => {
+  const str = csvStringify([
+    {
+      'Account Name': '=cmd',
+      'Blockchain Type': '+SUM(A1:A2)',
+      Network: '-mainnet',
+      Address: '@evil',
+      'Address Type': 'DEFAULT',
+      'HD Path': 'm/44/666/0/0/0'
+    }
+  ])
+
+  expect(str).toEqual(`Account Name,Blockchain Type,Network,Address,Address Type,HD Path
+'=cmd,'+SUM(A1:A2),'-mainnet,'@evil,DEFAULT,m/44/666/0/0/0
+`)
+})
+
 test('the csv string in the wrong format should report an error', () => {
   expect(() => csvParse(invalidFormatCsvStr)).toThrowError(MissDataError)
 })

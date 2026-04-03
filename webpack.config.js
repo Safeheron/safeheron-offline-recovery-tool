@@ -63,6 +63,7 @@ module.exports = {
       crypto: require.resolve('crypto-browserify'),
       stream: require.resolve('stream-browserify'),
       events: require.resolve('events/'),
+      vm: false,
     },
   },
   plugins: [

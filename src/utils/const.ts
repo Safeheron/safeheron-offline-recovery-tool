@@ -19,6 +19,7 @@ export const APTOS_CHAIN = 'aptos'
 export const SOLANA_CHAIN = 'solana'
 export const TON_CHAIN = 'ton'
 export const TON_TEST_CHAIN = 'ton_testnet'
+export const TON_TEST_CHAIN_ALIAS = 'ton testnet'
 export const LTC_CHAIN = 'litecoin'
 export const LTC_TEST_CHAIN = 'litecoin testnet'
 export const DOGE_CHAIN = 'dogecoin'
@@ -26,6 +27,27 @@ export const DOGE_TEST_CHAIN = 'dogecoin testnet'
 export const LIQUID_CHAIN = 'liquid'
 export const LIQUID_TEST_CHAIN = 'liquid testnet'
 
-export const SUPPORTED_BLOCKCHAIN = [EVM_CHAIN, BITCOIN_CHAIN, BITCOIN_TEST_CHAIN, BITCOIN_CASH_CHAIN, DASH_CHAIN, TRON_CHAIN, NEAR_CHAIN, FIL_CHAIN, SUI_CHAIN, APTOS_CHAIN, SOLANA_CHAIN, TON_CHAIN, TON_TEST_CHAIN, LTC_CHAIN, LTC_TEST_CHAIN, DOGE_CHAIN, DOGE_TEST_CHAIN, LIQUID_CHAIN, LIQUID_TEST_CHAIN] as const
+export const SUPPORTED_BLOCKCHAIN = [
+  EVM_CHAIN,
+  BITCOIN_CHAIN,
+  BITCOIN_TEST_CHAIN,
+  BITCOIN_CASH_CHAIN,
+  DASH_CHAIN,
+  TRON_CHAIN,
+  NEAR_CHAIN,
+  FIL_CHAIN,
+  SUI_CHAIN,
+  APTOS_CHAIN,
+  SOLANA_CHAIN,
+  TON_CHAIN,
+  TON_TEST_CHAIN,
+  TON_TEST_CHAIN_ALIAS,
+  LTC_CHAIN,
+  LTC_TEST_CHAIN,
+  DOGE_CHAIN,
+  DOGE_TEST_CHAIN,
+  LIQUID_CHAIN,
+  LIQUID_TEST_CHAIN,
+] as const
 
-export type SUPPORTED_BLOCKCHAIN_TYPE = typeof SUPPORTED_BLOCKCHAIN[number]
+export type SUPPORTED_BLOCKCHAIN_TYPE = (typeof SUPPORTED_BLOCKCHAIN)[number]

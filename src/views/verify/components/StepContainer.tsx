@@ -1,10 +1,10 @@
 import styled from 'styled-components'
 import { FC, ReactNode } from 'react'
-import { WebviewWindow } from '@tauri-apps/api/window'
 
 import { Button } from '@/components/base'
 import { useTranslation } from '@/i18n'
 import { useVersion } from '@/components/SelectVersion'
+import { openMnemonicToKeyWindow } from '@/utils/mnemonicToKeyWindow'
 
 interface Props {
   title?: string
@@ -29,13 +29,9 @@ const StepContainer: FC<Props> = ({
   const { t, i18n } = useTranslation()
   const { version } = useVersion()
   const openWindow = () => {
-    window.mnemonicToKeyWindow = new WebviewWindow('mnemonicToKey', {
-      url: `#/mnemonicToKey?version=${version}`,
-      title: '',
-      width: 500,
-      height: version === 'v1' ? 540 : 440,
-      resizable: false,
-    })
+    if (version) {
+      openMnemonicToKeyWindow(version)
+    }
   }
   return (
     <Wrapper>

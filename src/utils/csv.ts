@@ -24,6 +24,16 @@ export class MissRequiredFieldError extends Error {}
 
 export class UnsupportBlockChainError extends Error {}
 
+const CSV_FORMULA_PREFIX = /^[=+\-@\t\r]/
+
+function sanitizeCsvValue(value: unknown) {
+  if (typeof value !== 'string' || value.length === 0) {
+    return value
+  }
+
+  return CSV_FORMULA_PREFIX.test(value) ? `'${value}` : value
+}
+
 export function csvParse<T>(csvStr: string): T[] {
   const parsedData = parse(csvStr, {
     columns: true,
@@ -41,8 +51,9 @@ export function csvParse<T>(csvStr: string): T[] {
     const item = parsedData[i]
     const missFields = requiredFields.filter(field => {
       if (field === CSV_FIELD_BLOCKCHAIN) {
-        const blockchain = item[field]?.toLowerCase?.()
-        const valid = SUPPORTED_BLOCKCHAIN.includes(blockchain)
+        const blockchain = item[field]
+        const normalizedBlockchain = blockchain?.toLowerCase?.()
+        const valid = SUPPORTED_BLOCKCHAIN.includes(normalizedBlockchain)
         if (!valid) {
           unsupportBlockChain.add(blockchain)
         }
@@ -64,7 +75,13 @@ export function csvParse<T>(csvStr: string): T[] {
 }
 
 export function csvStringify<T>(csvArr: T[]): string {
-  return stringify(csvArr, {
+  const sanitizedRows = csvArr.map(row => (
+    Object.fromEntries(
+      Object.entries(row as Record<string, unknown>).map(([key, value]) => [key, sanitizeCsvValue(value)])
+    )
+  ))
+
+  return stringify(sanitizedRows, {
     header: true,
   })
 }
