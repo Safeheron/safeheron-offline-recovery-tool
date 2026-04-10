@@ -10,51 +10,8 @@ import {
   writeFileChunk,
   CHUNK_READ_SIZE,
 } from './tauriFileIO'
-import { parseCsvHeader, escapeCsvField, splitCsvFields } from './csvLineParser'
+import { parseCsvHeader, escapeCsvField, splitCsvFields, splitCsvLines } from './csvLineParser'
 import type { CsvHeaderInfo } from './csvLineParser'
-
-// Re-export for consumers that imported from here
-export { parseCsvHeader, parseCsvLine } from './csvLineParser'
-export type { CsvHeaderInfo } from './csvLineParser'
-
-/**
- * Split text into CSV logical lines, respecting quoted fields that contain newlines.
- * Returns [completeLines[], leftover] where leftover may contain an incomplete quoted field.
- */
-function splitCsvLines(text: string): [string[], string] {
-  const lines: string[] = []
-  let current = ''
-  let inQuotes = false
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    if (inQuotes) {
-      if (ch === '"') {
-        if (i + 1 < text.length && text[i + 1] === '"') {
-          current += '""'
-          i += 1
-        } else {
-          inQuotes = false
-          current += ch
-        }
-      } else {
-        current += ch
-      }
-    } else if (ch === '"') {
-      inQuotes = true
-      current += ch
-    } else if (ch === '\n') {
-      lines.push(current.replace(/\r$/, ''))
-      current = ''
-    } else {
-      current += ch
-    }
-  }
-
-  // If still inside quotes, current is an incomplete record (leftover)
-  // If not in quotes, current is also leftover (may be last line without trailing newline)
-  return [lines, current]
-}
 
 // --- Streaming pipeline orchestrator ---
 
@@ -154,7 +111,7 @@ export async function streamCsvProcess(
   const ed25519ChainNames = new Set<string>()
 
   // Sequential batches, each tagged with whether it contains liquid rows
-  const batchQueue: { lines: string; rowCount: number; hasLiquid: boolean }[] = []
+  const batchQueue: { lines: string[]; rowCount: number; hasLiquid: boolean }[] = []
   let currentLines: string[] = []
   let currentBatchHasLiquid = false
 
@@ -162,6 +119,7 @@ export async function streamCsvProcess(
     const chunkSize = Math.min(CHUNK_READ_SIZE, fileSize - offset)
     // eslint-disable-next-line no-await-in-loop
     const { text: chunk, bytesRead } = await readFileChunk(filePath, offset, chunkSize)
+    if (bytesRead === 0) break // safety: prevent infinite loop on unreadable bytes
     offset += bytesRead
 
     const combined = leftover + chunk
@@ -192,7 +150,7 @@ export async function streamCsvProcess(
         totalRowsParsed++
 
         if (currentLines.length >= BATCH_SIZE) {
-          batchQueue.push({ lines: currentLines.join('\n'), rowCount: currentLines.length, hasLiquid: currentBatchHasLiquid })
+          batchQueue.push({ lines: currentLines, rowCount: currentLines.length, hasLiquid: currentBatchHasLiquid })
           currentLines = []
           currentBatchHasLiquid = false
         }
@@ -215,7 +173,7 @@ export async function streamCsvProcess(
     totalRowsParsed++
   }
   if (currentLines.length > 0) {
-    batchQueue.push({ lines: currentLines.join('\n'), rowCount: currentLines.length, hasLiquid: currentBatchHasLiquid })
+    batchQueue.push({ lines: currentLines, rowCount: currentLines.length, hasLiquid: currentBatchHasLiquid })
     currentLines = []
   }
 

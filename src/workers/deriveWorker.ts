@@ -22,7 +22,7 @@ interface DeriveMessage {
   type: 'derive'
   batchIndex: number
   headerLine: string
-  rawLines: string
+  rawLines: string[]
   rowCount: number
 }
 
@@ -66,7 +66,6 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
     try {
       const header = parseCsvHeader(msg.headerLine)
       const rows: RawCSVRow[] = msg.rawLines
-        .split('\n')
         .map(line => parseCsvLine(line, header))
 
       const derived = recoverDerivedCSV(rows, hdKey, deriveCache)

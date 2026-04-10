@@ -91,35 +91,30 @@ fn read_file_chunk(path: String, offset: u64, size: u64) -> Result<(String, u64)
     file.seek(SeekFrom::Start(offset))
         .map_err(|e| format!("Failed to seek: {}", e))?;
 
-    // Read a few extra bytes beyond requested size to avoid splitting multi-byte chars.
-    // UTF-8 chars are at most 4 bytes, so reading 3 extra is sufficient.
-    let read_size = (size as usize) + 3;
-    let mut buf = vec![0u8; read_size];
+    // Read up to `size` bytes, then scan for the last valid UTF-8 boundary.
+    // If the boundary falls inside a multi-byte char, we truncate to before it;
+    // the caller will re-read those trailing bytes on the next call.
+    let mut buf = vec![0u8; size as usize];
     let bytes_read = file.read(&mut buf)
         .map_err(|e| format!("Failed to read: {}", e))?;
     buf.truncate(bytes_read);
 
-    // Find the last valid UTF-8 boundary within the requested size.
-    // We read extra bytes so incomplete chars at `size` boundary are now complete.
-    let target = std::cmp::min(size as usize, bytes_read);
-    let valid_len = match std::str::from_utf8(&buf[..target]) {
-        Ok(_) => target,
+    // Find the last complete UTF-8 character boundary.
+    let valid_len = match std::str::from_utf8(&buf) {
+        Ok(_) => buf.len(),
         Err(e) => e.valid_up_to(),
     };
 
-    // If valid_len is still 0 (file starts with invalid UTF-8), skip to first valid char
-    let actual_bytes = if valid_len == 0 && bytes_read > 0 {
-        // Find start of first valid UTF-8 char (skip continuation bytes 0x80..0xBF)
-        let skip = buf.iter().take_while(|&&b| (b & 0xC0) == 0x80).count().max(1);
-        skip as u64
-    } else {
-        valid_len as u64
-    };
+    if valid_len == 0 && bytes_read > 0 {
+        // Entire chunk is invalid UTF-8 (should not happen with well-formed CSV).
+        // Advance past the invalid bytes so the caller doesn't loop forever.
+        return Ok((String::new(), bytes_read as u64));
+    }
 
     buf.truncate(valid_len);
     let text = String::from_utf8(buf)
         .map_err(|e| format!("Invalid UTF-8: {}", e))?;
-    Ok((text, actual_bytes))
+    Ok((text, valid_len as u64))
 }
 
 #[tauri::command]

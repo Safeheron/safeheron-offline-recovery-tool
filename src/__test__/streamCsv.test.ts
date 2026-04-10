@@ -3,8 +3,7 @@ import { expect, test } from '@jest/globals'
 import {
   parseCsvHeader,
   parseCsvLine,
-  CsvHeaderInfo,
-} from '../utils/streamCsv'
+} from '../utils/csvLineParser'
 
 const header = 'Account Name,Blockchain Type,Network,Address,Address Type,HD Path,Algorithm'
 

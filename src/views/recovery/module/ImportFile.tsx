@@ -15,7 +15,7 @@ import { convertJsonBackupToRows } from '@/utils/jsonBackup'
 import { useTranslation } from '@/i18n'
 import { RawCSVRow } from '@/utils/mpc'
 import { readFileChunk, getTempPath, writeFileChunk } from '@/utils/tauriFileIO'
-import { parseCsvHeader, parseCsvLine, escapeCsvField } from '@/utils/csvLineParser'
+import { parseCsvHeader, parseCsvLine, escapeCsvField, splitCsvLines } from '@/utils/csvLineParser'
 import {
   CSV_REQUIRED_FIELD,
   CSV_FIELD_BLOCKCHAIN,
@@ -61,8 +61,7 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
   const validateLargeCsvHeader = async (rawFile: FileInfo) => {
     try {
       const { text: chunk } = await readFileChunk(rawFile.path, 0, 65536)
-      // Split respecting quoted fields that may contain newlines
-      const allLines = chunk.split('\n').map(l => l.replace(/\r$/, ''))
+      const [allLines] = splitCsvLines(chunk)
 
       if (allLines.filter(l => l).length < 2) {
         setErrMsg(t('Recovery.ImportFile.error.missDataRow'))

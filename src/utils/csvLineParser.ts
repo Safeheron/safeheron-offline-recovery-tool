@@ -115,3 +115,40 @@ export function escapeCsvField(value: string): string {
   }
   return value
 }
+
+/**
+ * Split text into CSV logical lines, respecting quoted fields that contain newlines.
+ * Returns [completeLines[], leftover] where leftover may contain an incomplete quoted field.
+ */
+export function splitCsvLines(text: string): [string[], string] {
+  const lines: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') {
+          current += '""'
+          i += 1
+        } else {
+          inQuotes = false
+          current += ch
+        }
+      } else {
+        current += ch
+      }
+    } else if (ch === '"') {
+      inQuotes = true
+      current += ch
+    } else if (ch === '\n') {
+      lines.push(current.replace(/\r$/, ''))
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+
+  return [lines, current]
+}
