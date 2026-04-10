@@ -4,7 +4,10 @@ import '@/assets/styles/global.css'
 import { ThemeProvider } from 'styled-components'
 
 import { theme } from '@/configs'
+import { injectColorTokens } from '@/configs/injectTokens'
 import App from '@/App'
+
+injectColorTokens()
 
 render(
   <StrictMode>

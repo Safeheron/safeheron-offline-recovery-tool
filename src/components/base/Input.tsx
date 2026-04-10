@@ -3,12 +3,12 @@ import styled from 'styled-components'
 const Input = styled.input`
   display: flex;
   width: 100%;
-  height: 46px;
-  font-size: 12px;
+  height: 56px;
+  font-size: 14px;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 14px;
   border: 1px solid var(--border-color);
-  border-radius: 5px;
+  border-radius: 12px;
   outline: none;
   color: var(--text-color);
   transition: 0.3s;
@@ -19,7 +19,8 @@ const Input = styled.input`
   }
 
   &::placeholder {
-    color: #abb8b8;
+    font-size: 14px;
+    color: var(--color-Neutral-70);
   }
 
   &:read-only {

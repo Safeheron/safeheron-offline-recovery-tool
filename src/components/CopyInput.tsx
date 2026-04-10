@@ -35,8 +35,8 @@ const Wrapper = styled.div`
   width: 100%;
   height: 46px;
   border: 1px solid var(--border-color);
-  border-radius: 5px;
-  background-color: #f4f3f3;
+  border-radius: 12px;
+  background-color: var(--color-Neutral-97);
   display: flex;
   align-items: center;
   justify-content: space-between;

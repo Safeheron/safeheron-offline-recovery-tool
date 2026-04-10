@@ -1,4 +1,5 @@
 module.exports = {
+  root: true,
   extends: ['prettier', 'airbnb', 'plugin:@typescript-eslint/recommended'],
   parser: '@typescript-eslint/parser',
   env: {
@@ -56,6 +57,7 @@ module.exports = {
     'function-paren-newline': 'off',
     'no-underscore-dangle': 'off',
     'no-bitwise': 'off',
+    'no-console': 'off',
 
     'react/jsx-filename-extension': [
       0,

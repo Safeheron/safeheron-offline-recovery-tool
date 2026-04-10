@@ -42,7 +42,7 @@
     "part3": "第三份",
     "copy": "复制",
     "copyed": "已复制",
-    "online": "为了您的资产安全，请断开网络（包括关闭 VPN 软件）、断开已经链接在电脑的手机等通信设备之后再操作",
+    "online": "为了您的资产安全，请断开网络（包括退出 VPN 软件）、断开已经链接在电脑的手机等通信设备之后再操作",
     "done": "完成",
     "choose": "选择"
   },
@@ -64,13 +64,16 @@
       "gotit": "我知道了"
     },
     "ExportKey": {
-      "title": "请导出钱包私钥文件",
-      "desc": "该文件包含您钱包中所有资产的私钥，请离线保存在安全的地方",
+      "title": "导出钱包私钥文件",
+      "desc": "此文件包含您钱包中所有资产的私钥，请将其保存在离线的安全地方。",
+      "loading": "钱包私钥导出中...",
       "recoverHDKeyError": "恢复失败，请检查助记词以及 Chaincode 是否正确",
       "recoverHDKeyErrorV2": "恢复失败，请检查助记词是否正确",
       "validateAddress": "数据文件检验失败，请检查数据文件是否正确",
       "recoverPrivateKeyError": "子私钥恢复失败",
       "tip": "由于 {{blockchain}} 网络为 Ed25519 算法生成，您需要使用 Safeheron 提供的 CLI 命令将资金转出。",
+      "tonTip1": "TON 导入须知：将 TON 私钥导入其他钱包时，请选择 V4R2 合约版本。",
+      "tonTip2": "资金转出须知：{{blockchain}} 需通过 Safeheron CLI 工具完成转账（受 Ed25519 算法限制）。",
       "export": "导出"
     },
     "ImportFile": {
@@ -109,7 +112,9 @@
   "selectVersion": {
     "title": "选择版本",
     "desc": "在选择版本前，请检查给你发送的离线恢复教程邮件，确认是否包含 Chaincode 信息。有 Chaincode 选 V1，无 Chaincode 选 V2。邮件中也会告知您需要选择的版本。",
-    "v1Btn": "V1 (有 Chaincode)",
-    "v2Btn": "V2 (无 Chaincode)"
+    "v1BtnTitle": "V1",
+    "v1BtnDesc": "(有 Chaincode)",
+    "v2BtnTitle": "V2",
+    "v2BtnDesc": "(无 Chaincode)"
   }
 }

@@ -26,7 +26,7 @@ export class UnsupportBlockChainError extends Error {}
 
 const CSV_FORMULA_PREFIX = /^[=+\-@\t\r]/
 
-function sanitizeCsvValue(value: unknown) {
+export function sanitizeCsvValue(value: unknown) {
   if (typeof value !== 'string' || value.length === 0) {
     return value
   }

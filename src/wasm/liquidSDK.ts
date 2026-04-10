@@ -13,6 +13,11 @@ const getEnvironment = (): 'node' | 'browser' => {
     return 'browser'
   }
 
+  // Web Worker: no window but has self
+  if (typeof self !== 'undefined' && typeof (self as any).importScripts === 'function') {
+    return 'browser'
+  }
+
   if (
     typeof process !== 'undefined' &&
     process.versions &&

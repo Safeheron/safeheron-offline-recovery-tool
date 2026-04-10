@@ -31,27 +31,37 @@ const PrivateKeyRecovery = () => {
     setStepIndex(stepIndex + 1)
   }, [stepIndex])
 
-  const setChainCode = useCallback((chainCode: string) => {
-    setData({
-      ...data,
-      chainCode,
-    })
-  }, [data])
+  const setChainCode = useCallback(
+    (chainCode: string) => {
+      setData({
+        ...data,
+        chainCode,
+      })
+    },
+    [data]
+  )
 
-  const setMnemonic = useCallback((mnemonic: string) => {
-    if (data.mnemonicList.length === 3) return
-    setData({
-      ...data,
-      mnemonicList: [...data.mnemonicList, mnemonic],
-    })
-  }, [data])
+  const setMnemonic = useCallback(
+    (mnemonic: string) => {
+      if (data.mnemonicList.length === 3) return
+      setData({
+        ...data,
+        mnemonicList: [...data.mnemonicList, mnemonic],
+      })
+    },
+    [data]
+  )
 
-  const setCsvJson = useCallback((arr: any[]) => {
-    setData({
-      ...data,
-      csvJson: arr,
-    })
-  }, [data])
+  const setCsvJson = useCallback(
+    (arr: any[], largeFilePath?: string) => {
+      setData({
+        ...data,
+        csvJson: arr,
+        largeFilePath,
+      })
+    },
+    [data]
+  )
 
   const stepList = useMemo(() => {
     let defaultStepList = [

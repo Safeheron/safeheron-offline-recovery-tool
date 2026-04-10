@@ -96,7 +96,7 @@ const PrivateKeyVerify: FC<Props> = ({ onVerify }) => {
               x: t(`common.part${i + 1}`),
             })}
           />
-          <ErrorMsg msg={errMsgs[i]} />
+          <ErrorMsg msg={errMsgs[i]} position="static" />
         </div>
       ))}
 

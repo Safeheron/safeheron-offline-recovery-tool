@@ -1,4 +1,5 @@
 import { FC, useState } from 'react'
+import styled from 'styled-components'
 
 import { Button } from '@/components/base'
 import MnemonicInput from '@/components/MnemonicInput'
@@ -14,7 +15,7 @@ interface Props {
 }
 
 const MnemonicVerify: FC<Props> = ({ index, list, next, prev, onComplete }) => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [mnemonic, setMnemonic] = useState('')
 
   const handleChange = (mnemonicArr: string[]) => {
@@ -41,10 +42,12 @@ const MnemonicVerify: FC<Props> = ({ index, list, next, prev, onComplete }) => {
   return (
     <>
       <div className="content">
-        <p>
-          {t('Recovery.Mnemonic.title', { x: t(`common.part${index}`) })} <br />
-          {t('Recovery.Mnemonic.desc')}
-        </p>
+        <MnemonicHeader $isEn={i18n.language === 'en-US'}>
+          <MnemonicTitle>
+            {t('Recovery.Mnemonic.title', { x: t(`common.part${index}`) })}
+          </MnemonicTitle>
+          <MnemonicDesc>{t('Recovery.Mnemonic.desc')}</MnemonicDesc>
+        </MnemonicHeader>
         <div className="form-item">
           <MnemonicInput
             verify={verify}
@@ -59,16 +62,33 @@ const MnemonicVerify: FC<Props> = ({ index, list, next, prev, onComplete }) => {
       <div className="step-buttons">
         {!!prev && <Button onClick={prev}>{t('common.prev')}</Button>}
 
-        <Button
-          type="primary"
-          onClick={handleSubmit}
-          disabled={!mnemonic}
-        >
+        <Button type="primary" onClick={handleSubmit} disabled={!mnemonic}>
           {t('common.next')}
         </Button>
       </div>
     </>
   )
 }
+
+const MnemonicHeader = styled.div<{ $isEn?: boolean }>`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+  margin-top: ${({ $isEn }) => ($isEn ? '44px' : '82px')};
+`
+
+const MnemonicTitle = styled.p`
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--color-Neutral-20);
+  line-height: normal;
+`
+
+const MnemonicDesc = styled.p`
+  font-size: 14px;
+  color: var(--color-Neutral-60);
+  line-height: 20px;
+`
 
 export default MnemonicVerify

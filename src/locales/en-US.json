@@ -66,11 +66,14 @@
     "ExportKey": {
       "title": "Export Wallet Private Key File",
       "desc": "This file contains private key for all the assets in your wallet, please keep it offline in a safe place.",
+      "loading": "Exporting wallet private key...",
       "recoverHDKeyError": "Recovery Failed: Please confirm that the recovery phrase and Chaincode are correct.",
       "recoverHDKeyErrorV2": "Recovery Failed: Please confirm that the recovery phrase is correct.",
       "validateAddress": "Data File Verification Failure: Please check if the data file is correct.",
       "recoverPrivateKeyError": "Subkey Recovery Failed",
       "tip": "Since the {{blockchain}} network utilizes the Ed25519 algorithm, please use the CLI commands provided by Safeheron to transfer funds.",
+      "tonTip1": "TON Import Notice: To import TON to other wallets, please select the V4R2 contract version.",
+      "tonTip2": "Transfer Notice: {{blockchain}} transfers must be completed via the Safeheron CLI tool (due to Ed25519 algorithm restrictions).",
       "export": "Export"
     },
     "ImportFile": {
@@ -109,7 +112,9 @@
   "selectVersion": {
     "title": "Select Version",
     "desc": "Before selecting a version, please check if the Chaincode is included in the offline recovery tutorial email. If it is, select V1. If it is not, select V2. The version you need to choose will also be specified in the tutorial email.",
-    "v1Btn": "V1 (with Chaincode)",
-    "v2Btn": "V2 (without Chaincode)"
+    "v1BtnTitle": "V1",
+    "v1BtnDesc": "(with Chaincode)",
+    "v2BtnTitle": "V2",
+    "v2BtnDesc": "(No Chaincode)"
   }
 }

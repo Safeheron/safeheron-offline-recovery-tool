@@ -41,13 +41,14 @@ const SCheckbox = styled.div`
   font-size: 12px;
   display: flex;
   cursor: pointer;
+  align-items: center;
 
   .input-inner {
-    margin-right: 8px;
+    margin-right: 10px;
     width: 16px;
     height: 16px;
     border: 1px solid var(--border-color);
-    border-radius: 2px;
+    border-radius: 4px;
     position: relative;
 
     &::after {
@@ -74,6 +75,14 @@ const SCheckbox = styled.div`
         opacity: 1;
         transition: all 0.2s cubic-bezier(0.12, 0.4, 0.29, 1.46) 0.1s;
       }
+    }
+
+    + span {
+      color: var(--color-Neutral-20);
+      font-size: 14px;
+      font-style: normal;
+      font-weight: 400;
+      line-height: normal;
     }
   }
 
