@@ -90,8 +90,24 @@ export function parseCsvHeader(headerLine: string): CsvHeaderInfo {
   }
 }
 
-export function parseCsvLine(line: string, header: CsvHeaderInfo): RawCSVRow {
+export interface ParseCsvLineOptions {
+  /** Skip Address non-empty validation (JSON backup rows have no address) */
+  skipAddressCheck?: boolean
+}
+
+export function parseCsvLine(line: string, header: CsvHeaderInfo, options?: ParseCsvLineOptions): RawCSVRow {
   const values = splitCsvFields(line)
+
+  // Validate required fields
+  const skipFields = options?.skipAddressCheck ? [CSV_FIELD_ADDRESS] : []
+  const missFields = REQUIRED_COLUMNS.filter(f => {
+    if (skipFields.includes(f)) return false
+    const idx = header.columns.indexOf(f)
+    return idx < 0 || !values[idx]?.trim()
+  })
+  if (missFields.length > 0) {
+    throw new MissRequiredFieldError(missFields.join(' | '))
+  }
 
   const blockchain = values[header.blockchainIdx] || ''
   if (!SUPPORTED_BLOCKCHAIN.includes(blockchain.toLowerCase() as SUPPORTED_BLOCKCHAIN_TYPE)) {

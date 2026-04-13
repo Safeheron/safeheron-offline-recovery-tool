@@ -1,4 +1,4 @@
-import { FC, useEffect, useMemo, useState } from 'react'
+import { FC, useEffect, useMemo, useRef, useState } from 'react'
 import styled from 'styled-components'
 import { dialog, fs } from '@tauri-apps/api'
 
@@ -10,10 +10,9 @@ import {
   MultiAlgoHDKey,
   recoverDerivedCSV,
   DerivedCSVRow,
-  ValidateAddressError,
 } from '@/utils/mpc'
 import { sleep } from '@/utils/common'
-import { csvStringify } from '@/utils/csv'
+import { csvStringify, MissRequiredFieldError, UnsupportBlockChainError } from '@/utils/csv'
 import { useTranslation } from '@/i18n'
 import { useVersion } from '@/components/SelectVersion'
 import ErrorMsg from '@/components/ErrorMsg'
@@ -29,14 +28,15 @@ import {
   TON_TEST_CHAIN_ALIAS,
 } from '@/utils/const'
 import { LiquidSDK } from '@/wasm/liquidSDK'
-import { streamCsvProcess, StreamProgress, StreamResult } from '@/utils/streamCsv'
-import { getTempPath, copyFile, registerSelectedPath } from '@/utils/tauriFileIO'
+import { streamCsvProcess, StreamProgress, RecoverHDKeyError } from '@/utils/streamCsv'
+import { getTempPath, copyFile, registerSelectedPath, removeTempFile } from '@/utils/tauriFileIO'
 
 export interface RecoveryItemModel {
   chainCode: string
   mnemonicList: string[]
   csvJson: any[]
   largeFilePath?: string
+  isJsonSource?: boolean
 }
 
 interface Props {
@@ -53,9 +53,14 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState(0)
   const [largeFileTempPath, setLargeFileTempPath] = useState('')
+  const largeFileTempPathRef = useRef('')
   const [largeFileEd25519Chains, setLargeFileEd25519Chains] = useState<string[]>([])
   useEffect(() => {
     exportPrivateKey()
+    return () => {
+      if (largeFileTempPathRef.current) removeTempFile(largeFileTempPathRef.current).catch(console.error)
+      if (data.largeFilePath) removeTempFile(data.largeFilePath).catch(console.error)
+    }
   }, [])
 
   const ed25519Chains = useMemo(() => {
@@ -125,6 +130,7 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
   const exportLargeFile = async () => {
     try {
       const tempPath = await getTempPath()
+      largeFileTempPathRef.current = tempPath
 
       const result = await streamCsvProcess(
         data.largeFilePath!,
@@ -133,7 +139,8 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         data.chainCode,
         (p: StreamProgress) => {
           setProgress(p.percent)
-        }
+        },
+        { skipAddressCheck: !!data.isJsonSource }
       )
 
       setErrMsg('')
@@ -144,16 +151,20 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       setLoading(false)
     } catch (error: any) {
       console.error('[RECOVER LARGE FILE ERROR]: ', error)
-      if (error instanceof ValidateAddressError) {
-        setErrMsg(t('Recovery.ExportKey.validateAddress'))
-      } else if (error.message?.includes('HDKey')) {
+      if (error instanceof RecoverHDKeyError) {
         const k =
           version === 'v2'
             ? 'Recovery.ExportKey.recoverHDKeyErrorV2'
             : 'Recovery.ExportKey.recoverHDKeyError'
         setErrMsg(t(k))
+      } else if (error instanceof MissRequiredFieldError) {
+        setErrMsg(t('Recovery.ImportFile.error.missRequiredField', { fields: error.message }))
+      } else if (error instanceof UnsupportBlockChainError) {
+        setErrMsg(t('Recovery.ImportFile.error.unsupportBlockChain', { blockchain: error.message }))
       } else {
-        setErrMsg(t('Recovery.ExportKey.recoverPrivateKeyError'))
+        // Address mismatch, bad HD path, library-thrown errors from derive:
+        // all point at the data file being wrong.
+        setErrMsg(t('Recovery.ExportKey.validateAddress'))
       }
       setLoading(false)
     }
@@ -189,11 +200,10 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       return true
     } catch (error) {
       console.error('[RECOVER EXPORT FILE ERROR]: ', error)
-      if (error instanceof ValidateAddressError) {
-        setErrMsg(t('Recovery.ExportKey.validateAddress'))
-      } else {
-        setErrMsg(t('Recovery.ExportKey.recoverPrivateKeyError'))
-      }
+      // HDKey errors are handled by the caller (exportSmallFile) before this
+      // function runs, so any error here is a data-file problem (unsupported
+      // chain, bad HD path, address mismatch, etc.).
+      setErrMsg(t('Recovery.ExportKey.validateAddress'))
       return false
     }
   }
@@ -207,6 +217,12 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         await registerSelectedPath(filePath)
         if (largeFileTempPath) {
           await copyFile(largeFileTempPath, filePath)
+          // Clean up temp files
+          removeTempFile(largeFileTempPath).catch(console.error)
+          largeFileTempPathRef.current = ''
+          if (data.largeFilePath) {
+            removeTempFile(data.largeFilePath).catch(console.error)
+          }
         } else {
           await fs.writeTextFile(filePath, csvStr)
         }

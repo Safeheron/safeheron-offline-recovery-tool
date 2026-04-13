@@ -33,6 +33,10 @@ export async function writeFileChunk(
   return invoke<void>('write_file_chunk', { path, content, append })
 }
 
+export async function removeTempFile(path: string): Promise<void> {
+  return invoke<void>('remove_temp_file', { path })
+}
+
 export async function registerSelectedPath(path: string): Promise<void> {
   return invoke<void>('register_selected_path', { path })
 }

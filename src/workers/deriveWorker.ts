@@ -6,8 +6,9 @@ import {
   DeriveCache,
   RawCSVRow,
   DerivedCSVRow,
+  ValidateAddressError,
 } from '@/utils/mpc'
-import { sanitizeCsvValue } from '@/utils/csv'
+import { sanitizeCsvValue, MissRequiredFieldError, UnsupportBlockChainError } from '@/utils/csv'
 import { parseCsvHeader, parseCsvLine } from '@/utils/csvLineParser'
 import { LiquidSDK } from '@/wasm/liquidSDK'
 
@@ -24,6 +25,7 @@ interface DeriveMessage {
   headerLine: string
   rawLines: string[]
   rowCount: number
+  skipAddressCheck: boolean
 }
 
 type WorkerMessage = InitMessage | DeriveMessage
@@ -65,8 +67,9 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
     }
     try {
       const header = parseCsvHeader(msg.headerLine)
+      const parseOptions = { skipAddressCheck: msg.skipAddressCheck }
       const rows: RawCSVRow[] = msg.rawLines
-        .map(line => parseCsvLine(line, header))
+        .map(line => parseCsvLine(line, header, parseOptions))
 
       const derived = recoverDerivedCSV(rows, hdKey, deriveCache)
       const sanitized = derived.map(row =>
@@ -80,11 +83,15 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
         rows: sanitized,
       })
     } catch (err: any) {
+      let errorName = 'Error'
+      if (err instanceof ValidateAddressError) errorName = 'ValidateAddressError'
+      else if (err instanceof MissRequiredFieldError) errorName = 'MissRequiredFieldError'
+      else if (err instanceof UnsupportBlockChainError) errorName = 'UnsupportBlockChainError'
       self.postMessage({
         type: 'derive-error',
         batchIndex: msg.batchIndex,
         error: err.message,
-        errorName: err.constructor?.name || 'Error',
+        errorName,
       })
     }
   }

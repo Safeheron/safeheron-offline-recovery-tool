@@ -1,4 +1,4 @@
-import { FC, useState } from 'react'
+import { FC, useEffect, useRef, useState } from 'react'
 import styled from 'styled-components'
 
 import { Button } from '@/components/base'
@@ -14,7 +14,7 @@ import {
 import { convertJsonBackupToRows } from '@/utils/jsonBackup'
 import { useTranslation } from '@/i18n'
 import { RawCSVRow } from '@/utils/mpc'
-import { readFileChunk, getTempPath, writeFileChunk } from '@/utils/tauriFileIO'
+import { readFileChunk, getTempPath, writeFileChunk, copyFile, getFileSize, removeTempFile, CHUNK_READ_SIZE } from '@/utils/tauriFileIO'
 import { parseCsvHeader, parseCsvLine, escapeCsvField, splitCsvLines } from '@/utils/csvLineParser'
 import {
   CSV_REQUIRED_FIELD,
@@ -29,19 +29,36 @@ const JSON_LARGE_ROW_THRESHOLD = 10000
 
 interface Props {
   next: () => void
-  onComplete: (arr: any[], largeFilePath?: string) => void
+  onComplete: (arr: any[], largeFilePath?: string, isJsonSource?: boolean) => void
 }
 const ImportFile: FC<Props> = ({ next, onComplete }) => {
   const { t } = useTranslation()
   const [file, setFile] = useState<FileInfo>()
   const [csvArr, setCsvArr] = useState<RawCSVRow[]>([])
   const [validatedLargeFile, setValidatedLargeFile] = useState(false)
+  const [isJsonSource, setIsJsonSource] = useState(false)
   const [errMsg, setErrMsg] = useState('')
   const [importing, setImporting] = useState(false)
+  // Tracks the temp file path currently held by `file` state so we can clean
+  // up when the user re-selects a different file, navigates away, or the
+  // component unmounts. Only set for large CSV / large JSON paths.
+  const tempPathRef = useRef('')
+
+  const cleanupCurrentTempFile = () => {
+    if (tempPathRef.current) {
+      const stale = tempPathRef.current
+      tempPathRef.current = ''
+      removeTempFile(stale).catch(console.error)
+    }
+  }
+
+  useEffect(() => () => cleanupCurrentTempFile(), [])
 
   const handleChange = async (rawFile: FileInfo) => {
+    cleanupCurrentTempFile()
     setFile(rawFile)
     setValidatedLargeFile(false)
+    setIsJsonSource(false)
     setImporting(true)
 
     try {
@@ -49,7 +66,7 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
       if (isJson) {
         await parseJsonFile(rawFile)
       } else if (rawFile.isLargeFile) {
-        await validateLargeCsvHeader(rawFile)
+        await preloadLargeCsv(rawFile)
       } else {
         parseCsvFile(rawFile)
       }
@@ -58,10 +75,11 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
     }
   }
 
-  const validateLargeCsvHeader = async (rawFile: FileInfo) => {
+  const preloadLargeCsv = async (rawFile: FileInfo) => {
     try {
-      const { text: chunk } = await readFileChunk(rawFile.path, 0, 65536)
-      const [allLines] = splitCsvLines(chunk)
+      // Validate header first (read first 64KB)
+      const { text: firstChunk } = await readFileChunk(rawFile.path, 0, 65536)
+      const [allLines] = splitCsvLines(firstChunk)
 
       if (allLines.filter(l => l).length < 2) {
         setErrMsg(t('Recovery.ImportFile.error.missDataRow'))
@@ -80,7 +98,13 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
         }
       }
 
+      // Header valid — copy source to temp so source file is no longer needed
+      const tempPath = await getTempPath()
+      await copyFile(rawFile.path, tempPath)
+      tempPathRef.current = tempPath
+
       setValidatedLargeFile(true)
+      setFile({ ...rawFile, path: tempPath, isLargeFile: true })
       setCsvArr([])
       setErrMsg('')
     } catch (err) {
@@ -135,7 +159,9 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
       if (arr.length > JSON_LARGE_ROW_THRESHOLD) {
         // Write expanded rows to temp CSV, then use streaming pipeline
         const tempPath = await writeTempCsv(arr)
+        tempPathRef.current = tempPath
         setValidatedLargeFile(true)
+        setIsJsonSource(true)
         setFile({ ...rawFile, path: tempPath, isLargeFile: true })
         setCsvArr([])
         setErrMsg('')
@@ -179,7 +205,10 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
 
   const handleSubmit = () => {
     if (validatedLargeFile && file) {
-      onComplete([], file.path)
+      // Ownership of the temp file transfers to ExportKey via data.largeFilePath.
+      // Clear the ref so unmount cleanup doesn't delete a file still in use.
+      tempPathRef.current = ''
+      onComplete([], file.path, isJsonSource)
     } else {
       if (!csvArr) return
       onComplete(csvArr)
@@ -194,7 +223,7 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
       <div className="content" style={{ marginTop: 145.5 }}>
         <Title>{t('Recovery.ImportFile.title')}</Title>
         <div className="form-item" style={{ paddingBottom: 0 }}>
-          <Upload file={file} onChange={handleChange} />
+          <Upload file={file} onChange={handleChange} disabled={importing} />
           <ErrorMsgWrapper>
             <ErrorMsg msg={errMsg} position="static" />
           </ErrorMsgWrapper>

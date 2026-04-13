@@ -14,11 +14,13 @@ export interface FileInfo {
 interface Props {
   onChange: (fileInfo: FileInfo) => void
   file?: FileInfo
+  disabled?: boolean
 }
 
-const Upload: FC<Props> = ({ onChange, file }) => {
+const Upload: FC<Props> = ({ onChange, file, disabled }) => {
   const { t } = useTranslation()
   const handleClick = async () => {
+    if (disabled) return
     const filePath = await dialog.open({
       filters: [
         {
@@ -53,7 +55,7 @@ const Upload: FC<Props> = ({ onChange, file }) => {
   return (
     <Wrapper>
       <div className="upload-filename">{file?.name}</div>
-      <a className="link" onClick={handleClick}>
+      <a className={`link${disabled ? ' disabled' : ''}`} onClick={handleClick}>
         {t('common.choose')}
       </a>
     </Wrapper>
@@ -90,6 +92,12 @@ const Wrapper = styled.div`
     cursor: pointer;
     white-space: nowrap;
     align-self: center;
+
+    &.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
   }
 `
 

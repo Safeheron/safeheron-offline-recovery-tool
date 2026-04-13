@@ -9,6 +9,7 @@ import { Secp256k1HDKey, Ed25519HDKey } from '@safeheron/crypto-bip32'
 import { mnemonicToEntropy } from 'bip39'
 
 import blockchainUtil from './blockchain'
+import { UnsupportBlockChainError } from './csv'
 import {
   padToLength,
   toCompressedPubKeyHex,
@@ -221,7 +222,13 @@ const deriveAddresses = (
     case LIQUID_TEST_CHAIN:
       return blockchainUtil.liquid.derivedAddress(pubhex)
     default:
-      return []
+      // Reached when a row's Blockchain Type isn't in SUPPORTED_BLOCKCHAIN.
+      // The CSV import path (csv.ts::csvParse) and the large-file worker
+      // (csvLineParser.ts::parseCsvLine) both reject unsupported chains up
+      // front, but the small-JSON path goes straight from
+      // convertJsonBackupToRows → recoverDerivedCSV with no validation, so
+      // we backstop the check here to avoid silently emitting empty addresses.
+      throw new UnsupportBlockChainError(String(chainType))
   }
 }
 

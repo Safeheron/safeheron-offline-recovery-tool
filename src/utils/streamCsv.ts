@@ -2,7 +2,7 @@ import {
   LIQUID_CHAIN,
   LIQUID_TEST_CHAIN,
 } from './const'
-import { MissRequiredFieldError, MissDataError } from './csv'
+import { MissRequiredFieldError, MissDataError, UnsupportBlockChainError } from './csv'
 import { ValidateAddressError, DerivedCSVRow } from './mpc'
 import {
   getFileSize,
@@ -14,6 +14,11 @@ import { parseCsvHeader, escapeCsvField, splitCsvFields, splitCsvLines } from '.
 import type { CsvHeaderInfo } from './csvLineParser'
 
 // --- Streaming pipeline orchestrator ---
+
+/** Thrown when a worker fails to build the HDKey during init — i.e. the user
+ *  provided invalid mnemonics/chaincode. Used by the UI layer to distinguish
+ *  "bad credentials" from "bad data file" without string-matching on messages. */
+export class RecoverHDKeyError extends Error {}
 
 const BATCH_SIZE = 2000
 
@@ -54,7 +59,7 @@ function createSingleWorker(
       if (e.data.type === 'init-done') resolve(worker)
       else if (e.data.type === 'init-error') {
         worker.terminate()
-        reject(new Error(e.data.error))
+        reject(new RecoverHDKeyError(e.data.error))
       }
     }
 
@@ -88,12 +93,18 @@ function batchToCsvChunk(rows: DerivedCSVRow[], columns: string[]): string {
     .join('\n')}\n`
 }
 
+export interface StreamCsvOptions {
+  /** Source is JSON backup — Address field may be empty */
+  skipAddressCheck?: boolean
+}
+
 export async function streamCsvProcess(
   filePath: string,
   outputPath: string,
   mnemonics: string[],
   chainCode: string,
-  onProgress: (progress: StreamProgress) => void
+  onProgress: (progress: StreamProgress) => void,
+  options?: StreamCsvOptions
 ): Promise<StreamResult> {
   const tStart = performance.now()
   const fileSize = await getFileSize(filePath)
@@ -267,6 +278,7 @@ export async function streamCsvProcess(
           headerLine,
           rawLines: batch.lines,
           rowCount: batch.rowCount,
+          skipAddressCheck: !!options?.skipAddressCheck,
         })
       } catch (err: any) {
         if (!rejected) { rejected = true; terminateAll(); reject(err) }
@@ -297,6 +309,7 @@ export async function streamCsvProcess(
         headerLine,
         rawLines: batch.lines,
         rowCount: batch.rowCount,
+        skipAddressCheck: !!options?.skipAddressCheck,
       })
     }
 
@@ -341,6 +354,10 @@ export async function streamCsvProcess(
           terminateAll()
           if (msg.errorName === 'ValidateAddressError') {
             reject(new ValidateAddressError(msg.error))
+          } else if (msg.errorName === 'MissRequiredFieldError') {
+            reject(new MissRequiredFieldError(msg.error))
+          } else if (msg.errorName === 'UnsupportBlockChainError') {
+            reject(new UnsupportBlockChainError(msg.error))
           } else {
             reject(new Error(msg.error))
           }
