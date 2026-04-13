@@ -32,6 +32,7 @@ custom-protocol = [ "tauri/custom-protocol" ]
 # fix: mac v1.2 can not copy/paste
 # https://github.com/tauri-apps/tauri/issues/5669
 [profile.release]
-strip = true 
+strip = true
 lto = true
 opt-level = "s"
+codegen-units = 1
