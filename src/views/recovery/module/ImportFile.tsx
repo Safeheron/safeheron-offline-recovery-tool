@@ -29,7 +29,7 @@ const JSON_LARGE_ROW_THRESHOLD = 10000
 
 interface Props {
   next: () => void
-  onComplete: (arr: any[], largeFilePath?: string, isJsonSource?: boolean) => void
+  onComplete: (arr: any[], largeFilePath?: string, isJsonSource?: boolean, jsonMappingPath?: string) => void
 }
 const ImportFile: FC<Props> = ({ next, onComplete }) => {
   const { t } = useTranslation()
@@ -42,20 +42,19 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
   // Tracks the temp file path currently held by `file` state so we can clean
   // up when the user re-selects a different file, navigates away, or the
   // component unmounts. Only set for large CSV / large JSON paths.
-  const tempPathRef = useRef('')
+  // Tracks ALL temp files (sorted CSV + mapping sidecar) so nothing leaks.
+  const tempPathsRef = useRef<string[]>([])
 
-  const cleanupCurrentTempFile = () => {
-    if (tempPathRef.current) {
-      const stale = tempPathRef.current
-      tempPathRef.current = ''
-      removeTempFile(stale).catch(console.error)
-    }
+  const cleanupCurrentTempFiles = () => {
+    const stale = tempPathsRef.current
+    tempPathsRef.current = []
+    stale.forEach(p => removeTempFile(p).catch(console.error))
   }
 
-  useEffect(() => () => cleanupCurrentTempFile(), [])
+  useEffect(() => () => cleanupCurrentTempFiles(), [])
 
   const handleChange = async (rawFile: FileInfo) => {
-    cleanupCurrentTempFile()
+    cleanupCurrentTempFiles()
     setFile(rawFile)
     setValidatedLargeFile(false)
     setIsJsonSource(false)
@@ -101,7 +100,7 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
       // Header valid — copy source to temp so source file is no longer needed
       const tempPath = await getTempPath()
       await copyFile(rawFile.path, tempPath)
-      tempPathRef.current = tempPath
+      tempPathsRef.current = [tempPath]
 
       setValidatedLargeFile(true)
       setFile({ ...rawFile, path: tempPath, isLargeFile: true })
@@ -158,11 +157,11 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
 
       if (arr.length > JSON_LARGE_ROW_THRESHOLD) {
         // Write expanded rows to temp CSV, then use streaming pipeline
-        const tempPath = await writeTempCsv(arr)
-        tempPathRef.current = tempPath
+        const { tempPath, mappingPath } = await writeTempCsv(arr)
+        tempPathsRef.current = [tempPath, mappingPath]
         setValidatedLargeFile(true)
         setIsJsonSource(true)
-        setFile({ ...rawFile, path: tempPath, isLargeFile: true })
+        setFile({ ...rawFile, path: tempPath, isLargeFile: true, jsonMappingPath: mappingPath })
         setCsvArr([])
         setErrMsg('')
       } else {
@@ -176,8 +175,13 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
     }
   }
 
-  const writeTempCsv = async (rows: RawCSVRow[]): Promise<string> => {
+  const writeTempCsv = async (rows: RawCSVRow[]): Promise<{ tempPath: string; mappingPath: string }> => {
     const tempPath = await getTempPath()
+    // __sourceIdx: preserves the row's position in the original JSON expansion so the
+    // final output (post-derive) can be restored to source order. Rows are sorted by
+    // (algo, parentPath) below to maximize worker parentKeyCache hit rate during derive
+    // (without this, each of the ~2.37M rows triggers a fresh ~50ms parent derive —
+    // see Oblong/O-2603 perf analysis).
     const CSV_COLUMNS = [
       CSV_FIELD_BLOCKCHAIN,
       CSV_FIELD_NETWORK,
@@ -186,29 +190,72 @@ const ImportFile: FC<Props> = ({ next, onComplete }) => {
       CSV_REQUIRED_FIELD,
       CSV_FIELD_ALGO,
     ]
+
+    // --- Sort rows by (algo, parentPath, lastIndex) to maximize cache effectiveness ---
+    // Three-level sort:
+    //   1. algo groups use their own HDKey instance, so sharing within algo only.
+    //   2. parentPath (HD path minus last segment) — same parent means same cached parent key.
+    //   3. lastIndex (last HD segment as integer) — groups same fullPath rows together so
+    //      the childKey cache in recoverDerivedCSV gets hit for all but the first occurrence;
+    //      when lastIndex differs within a parentPath group, the parentKey cache then takes
+    //      over for the child miss, saving 5 of the 6 CKDs.
+    const indexed = rows.map((row, i) => {
+      const rec = row as unknown as Record<string, string>
+      const hdPath = rec[CSV_REQUIRED_FIELD] || ''
+      const lastSlash = hdPath.lastIndexOf('/')
+      const parentPath = lastSlash >= 0 ? hdPath.slice(0, lastSlash) : hdPath
+      const lastIndex = lastSlash >= 0 ? parseInt(hdPath.slice(lastSlash + 1), 10) : 0
+      const algo = rec[CSV_FIELD_ALGO] || ''
+      return {
+        row,
+        sourceIdx: i,
+        algo,
+        parentPath,
+        lastIndex: Number.isFinite(lastIndex) ? lastIndex : 0,
+      }
+    })
+    indexed.sort((a, b) => {
+      if (a.algo !== b.algo) return a.algo < b.algo ? -1 : 1
+      if (a.parentPath !== b.parentPath) return a.parentPath < b.parentPath ? -1 : 1
+      return a.lastIndex - b.lastIndex
+    })
+
     const header = `${CSV_COLUMNS.join(',')}\n`
     await writeFileChunk(tempPath, header, false)
 
-    // Write in chunks to avoid large string allocation
+    // Write sorted CSV + sidecar mapping file (sourceIdx per line).
+    // The mapping file records each sorted row's original position so
+    // restoreSourceOrder can reorder without polluting the CSV schema.
+    const mappingPath = await getTempPath()
+    await writeFileChunk(mappingPath, '', false)
     const CHUNK_ROWS = 5000
-    for (let i = 0; i < rows.length; i += CHUNK_ROWS) {
-      const slice = rows.slice(i, i + CHUNK_ROWS)
-      const chunk = `${slice
-        .map(row => CSV_COLUMNS.map(col => escapeCsvField(String(sanitizeCsvValue((row as unknown as Record<string, string>)[col] ?? '')))).join(','))
+    for (let i = 0; i < indexed.length; i += CHUNK_ROWS) {
+      const slice = indexed.slice(i, i + CHUNK_ROWS)
+      const csvChunk = `${slice
+        .map(({ row }) => {
+          const rec = row as unknown as Record<string, string>
+          return CSV_COLUMNS
+            .map(col => escapeCsvField(String(sanitizeCsvValue(rec[col] ?? ''))))
+            .join(',')
+        })
         .join('\n')}\n`
+      const mapChunk = `${slice.map(({ sourceIdx }) => sourceIdx).join('\n')}\n`
       // eslint-disable-next-line no-await-in-loop
-      await writeFileChunk(tempPath, chunk, true)
+      await writeFileChunk(tempPath, csvChunk, true)
+      // eslint-disable-next-line no-await-in-loop
+      await writeFileChunk(mappingPath, mapChunk, true)
     }
 
-    return tempPath
+    return { tempPath, mappingPath }
   }
 
   const handleSubmit = () => {
     if (validatedLargeFile && file) {
-      // Ownership of the temp file transfers to ExportKey via data.largeFilePath.
-      // Clear the ref so unmount cleanup doesn't delete a file still in use.
-      tempPathRef.current = ''
-      onComplete([], file.path, isJsonSource)
+      // Ownership of the temp files transfers to ExportKey via data.largeFilePath
+      // (and data.jsonMappingPath). Clear the ref so unmount cleanup doesn't
+      // delete files still in use.
+      tempPathsRef.current = []
+      onComplete([], file.path, isJsonSource, file.jsonMappingPath)
     } else {
       if (!csvArr) return
       onComplete(csvArr)

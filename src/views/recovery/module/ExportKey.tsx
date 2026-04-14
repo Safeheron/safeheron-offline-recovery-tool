@@ -30,6 +30,7 @@ import {
 import { LiquidSDK } from '@/wasm/liquidSDK'
 import { streamCsvProcess, StreamProgress, RecoverHDKeyError } from '@/utils/streamCsv'
 import { getTempPath, copyFile, registerSelectedPath, removeTempFile } from '@/utils/tauriFileIO'
+import { restoreSourceOrder } from '@/utils/restoreSourceOrder'
 
 export interface RecoveryItemModel {
   chainCode: string
@@ -37,6 +38,8 @@ export interface RecoveryItemModel {
   csvJson: any[]
   largeFilePath?: string
   isJsonSource?: boolean
+  /** Sidecar mapping file — maps sorted-derive-order line N to original sourceIdx */
+  jsonMappingPath?: string
 }
 
 interface Props {
@@ -128,28 +131,56 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
   }
 
   const exportLargeFile = async () => {
+    // Hoisted so the catch block can clean up intermediate files on error.
+    let derivedPath = ''
+    let finalPath = ''
     try {
-      const tempPath = await getTempPath()
-      largeFileTempPathRef.current = tempPath
+      // For JSON sources we run an extra "restore source order" pass because the
+      // rows in `data.largeFilePath` were sorted by (algo, parentPath) in
+      // ImportFile::writeTempCsv to make the worker parent-cache effective. The
+      // sorted output comes out of streamCsvProcess in that same sorted order;
+      // we then external-bucket-sort it back to original source order.
+      derivedPath = await getTempPath()
+      finalPath = data.isJsonSource ? await getTempPath() : derivedPath
+      largeFileTempPathRef.current = finalPath
 
       const result = await streamCsvProcess(
         data.largeFilePath!,
-        tempPath,
+        derivedPath,
         data.mnemonicList,
         data.chainCode,
         (p: StreamProgress) => {
-          setProgress(p.percent)
+          // Reserve the last 5% for the restore-order pass on JSON paths so the
+          // progress bar still reflects ongoing work after derive completes.
+          const capped = data.isJsonSource ? Math.min(p.percent, 95) : p.percent
+          setProgress(capped)
         },
         { skipAddressCheck: !!data.isJsonSource }
       )
 
+      if (data.isJsonSource && data.jsonMappingPath) {
+        await restoreSourceOrder(derivedPath, finalPath, result.totalRows, data.jsonMappingPath, rp => {
+          setProgress(95 + Math.round(rp.fraction * 5))
+        })
+        removeTempFile(derivedPath).catch(console.error)
+        removeTempFile(data.jsonMappingPath).catch(console.error)
+      }
+
       setErrMsg('')
-      setLargeFileTempPath(tempPath)
+      setLargeFileTempPath(finalPath)
       setLargeFileEd25519Chains(result.ed25519Chains)
       setProgress(100)
       await sleep(400)
       setLoading(false)
     } catch (error: any) {
+      // Clean up intermediate temp files that the success path would have removed.
+      // derivedPath / finalPath may not exist yet (e.g. streamCsvProcess failed
+      // before writing anything), so swallow "File does not exist" errors.
+      if (data.isJsonSource) {
+        removeTempFile(derivedPath).catch(console.error)
+        if (finalPath !== derivedPath) removeTempFile(finalPath).catch(console.error)
+        if (data.jsonMappingPath) removeTempFile(data.jsonMappingPath).catch(console.error)
+      }
       console.error('[RECOVER LARGE FILE ERROR]: ', error)
       if (error instanceof RecoverHDKeyError) {
         const k =

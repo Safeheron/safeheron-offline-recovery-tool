@@ -29,6 +29,7 @@ export interface StreamProgress {
 
 export interface StreamResult {
   ed25519Chains: string[]
+  totalRows: number
 }
 
 const ED25519_CHAIN_SET = new Set([
@@ -382,5 +383,5 @@ export async function streamCsvProcess(
 
   onProgress({ phase: 'write', percent: 100 })
 
-  return { ed25519Chains: [...ed25519ChainNames] }
+  return { ed25519Chains: [...ed25519ChainNames], totalRows }
 }

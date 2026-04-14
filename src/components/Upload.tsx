@@ -10,6 +10,8 @@ export interface FileInfo {
   text: string
   path: string
   isLargeFile?: boolean
+  /** Sidecar mapping file for JSON-backup sort-then-restore-order pipeline */
+  jsonMappingPath?: string
 }
 interface Props {
   onChange: (fileInfo: FileInfo) => void

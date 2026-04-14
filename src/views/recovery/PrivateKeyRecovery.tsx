@@ -53,12 +53,13 @@ const PrivateKeyRecovery = () => {
   )
 
   const setCsvJson = useCallback(
-    (arr: any[], largeFilePath?: string, isJsonSource?: boolean) => {
+    (arr: any[], largeFilePath?: string, isJsonSource?: boolean, jsonMappingPath?: string) => {
       setData({
         ...data,
         csvJson: arr,
         largeFilePath,
         isJsonSource,
+        jsonMappingPath,
       })
     },
     [data]
