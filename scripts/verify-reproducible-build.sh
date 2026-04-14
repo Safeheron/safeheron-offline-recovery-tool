@@ -11,10 +11,8 @@
 #
 # Full reproducible build workflow:
 #   1. All machines: npm run check:build-env  (compare output, ensure match)
-#   2. All machines: npm ci && npm run build:reproducible
-#   3. All machines: npm run verify:reproducible
-#   4. Compare SHA-256 hashes across machines
-#   5. Signing machine: sign + notarize, then npm run verify:macos
+#   2. All machines: npm run build:reproducible
+#   3. Compare SHA-256 hashes across machines (signing machine auto-verifies DMG integrity)
 #
 
 set -euo pipefail
@@ -46,20 +44,37 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEFAULT_APP="$PROJECT_DIR/src-tauri/target/universal-apple-darwin/release/bundle/macos/Offline Recovery Tool.app"
 
-if [ $# -eq 0 ]; then
+MANIFEST_OUT=""
+INPUT=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --manifest)
+            shift
+            MANIFEST_OUT="${1:-}"
+            [ -n "$MANIFEST_OUT" ] || { echo "Error: --manifest requires a path argument" >&2; exit 1; }
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--manifest <output-path>] [path-to-.app-or-.dmg]"
+            echo ""
+            echo "Normalizes a macOS build and outputs a deterministic SHA-256 hash"
+            echo "for reproducible build verification."
+            echo ""
+            echo "  --manifest <path>  Save per-file manifest (hashes + modes) for cross-machine diff"
+            echo ""
+            echo "If no input path is given, defaults to:"
+            echo "  src-tauri/target/universal-apple-darwin/release/bundle/macos/Offline Recovery Tool.app"
+            exit 0
+            ;;
+        *)
+            INPUT="$1"
+            ;;
+    esac
+    shift
+done
+
+if [ -z "$INPUT" ]; then
     INPUT="$DEFAULT_APP"
     info "Using default build path: $INPUT"
-elif [ $# -eq 1 ]; then
-    INPUT="$1"
-else
-    echo "Usage: $0 [path-to-.app-or-.dmg]"
-    echo ""
-    echo "Normalizes a macOS build and outputs a deterministic SHA-256 hash"
-    echo "for reproducible build verification."
-    echo ""
-    echo "If no path is given, defaults to:"
-    echo "  src-tauri/target/universal-apple-darwin/release/bundle/macos/Offline Recovery Tool.app"
-    exit 1
 fi
 
 if [ ! -e "$INPUT" ]; then
@@ -143,10 +158,27 @@ fi
 echo "================================================================"
 echo "Step 4: Computing deterministic hash..."
 
-# Generate sorted list of relative paths + per-file SHA-256, then hash the whole list
-HASH=$(cd "$WORK_APP" && find . -type f | LC_ALL=C sort | while IFS= read -r file; do
-    shasum -a 256 "$file"
-done | shasum -a 256 | awk '{print $1}')
+# Hash = (per-file SHA-256) ++ (mode + path of every entry).
+# Including stat output catches cases where file content is identical but
+# permissions differ — e.g. the main executable's +x bit getting dropped
+# would leave shasum unchanged but break the installed app.
+# Use -print0 / sort -z / xargs -0 so one invocation handles many files
+# (fork-per-file is ~10x slower on a bundle with hundreds of files) and
+# filenames containing newlines are handled correctly.
+#
+# tee saves the intermediate per-file data (the "manifest") so it can be
+# diff'd across machines when the final hash doesn't match.
+MANIFEST_TMP="$TMPDIR_WORK/manifest.txt"
+HASH=$(cd "$WORK_APP" && {
+    find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256
+    find . -print0            | LC_ALL=C sort -z | xargs -0 stat -f '%Lp %N'
+} | tee "$MANIFEST_TMP" | shasum -a 256 | awk '{print $1}')
+
+# Export manifest before cleanup wipes TMPDIR_WORK.
+if [ -n "$MANIFEST_OUT" ]; then
+    cp "$MANIFEST_TMP" "$MANIFEST_OUT"
+    info "Manifest saved to: $MANIFEST_OUT"
+fi
 
 # --- Step 5: Collect metadata ---
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$WORK_APP/Contents/Info.plist" 2>/dev/null || echo "unknown")
