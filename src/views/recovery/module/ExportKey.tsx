@@ -1,25 +1,16 @@
-import { FC, useEffect, useMemo, useRef, useState } from 'react'
+import { FC, useEffect, useRef, useState } from 'react'
 import styled from 'styled-components'
-import { dialog, fs } from '@tauri-apps/api'
+import { dialog } from '@tauri-apps/api'
 
 import { Button } from '@/components/base'
 import attentionIcon from '@img/attention.svg'
 import failIcon from '@img/fail.svg'
-import {
-  recoverHDKeyFromMnemonics,
-  MultiAlgoHDKey,
-  recoverDerivedCSV,
-  DerivedCSVRow,
-} from '@/utils/mpc'
 import { sleep } from '@/utils/common'
-import { csvStringify, MissRequiredFieldError, UnsupportBlockChainError } from '@/utils/csv'
+import { MissRequiredFieldError, UnsupportBlockChainError } from '@/utils/csv'
 import { useTranslation } from '@/i18n'
 import { useVersion } from '@/components/SelectVersion'
-import ErrorMsg from '@/components/ErrorMsg'
 import {
   APTOS_CHAIN,
-  LIQUID_CHAIN,
-  LIQUID_TEST_CHAIN,
   NEAR_CHAIN,
   SOLANA_CHAIN,
   SUI_CHAIN,
@@ -27,17 +18,20 @@ import {
   TON_TEST_CHAIN,
   TON_TEST_CHAIN_ALIAS,
 } from '@/utils/const'
-import { LiquidSDK } from '@/wasm/liquidSDK'
 import { streamCsvProcess, StreamProgress, RecoverHDKeyError, NetworkDetectedError } from '@/utils/streamCsv'
-import { getTempPath, copyFile, registerSelectedPath, removeTempFile } from '@/utils/tauriFileIO'
+import { getFileSize, getTempPath, copyFile, registerSelectedPath, removeTempFile } from '@/utils/tauriFileIO'
 import { restoreSourceOrder } from '@/utils/restoreSourceOrder'
+
+// Files under this size use a single worker (worker init overhead ~200ms
+// vs near-zero derive time for small files makes multi-worker pointless).
+const SINGLE_WORKER_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
 export interface RecoveryItemModel {
   chainCode: string
   mnemonicList: string[]
-  csvJson: any[]
-  largeFilePath?: string
-  isJsonSource?: boolean
+  /** Temp CSV path — source for streamCsvProcess */
+  inputCsvPath: string
+  isJsonSource: boolean
   /** Sidecar mapping file — maps sorted-derive-order line N to original sourceIdx */
   jsonMappingPath?: string
   originalFile?: { name: string; path: string }
@@ -53,96 +47,32 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
   const { version } = useVersion()
   const { t } = useTranslation()
   const [errMsg, setErrMsg] = useState('')
-  const [csvStr, setCsvStr] = useState('')
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState(0)
-  const [largeFileTempPath, setLargeFileTempPath] = useState('')
-  const largeFileTempPathRef = useRef('')
-  const [largeFileEd25519Chains, setLargeFileEd25519Chains] = useState<string[]>([])
+  const [finalTempPath, setFinalTempPath] = useState('')
+  const finalTempPathRef = useRef('')
+  const [ed25519Chains, setEd25519Chains] = useState<string[]>([])
   useEffect(() => {
     exportPrivateKey()
     return () => {
-      if (largeFileTempPathRef.current) removeTempFile(largeFileTempPathRef.current).catch(console.error)
-      if (data.largeFilePath) removeTempFile(data.largeFilePath).catch(console.error)
+      if (finalTempPathRef.current) removeTempFile(finalTempPathRef.current).catch(console.error)
+      if (data.inputCsvPath) removeTempFile(data.inputCsvPath).catch(console.error)
     }
   }, [])
 
-  const ed25519Chains = useMemo(() => {
-    if (largeFileEd25519Chains.length > 0) {
-      return largeFileEd25519Chains
-    }
-    if (Array.isArray(data.csvJson)) {
-      const result = data.csvJson.filter(account =>
-        [
-          TON_CHAIN,
-          TON_TEST_CHAIN,
-          TON_TEST_CHAIN_ALIAS,
-          NEAR_CHAIN,
-          APTOS_CHAIN,
-          SUI_CHAIN,
-          SOLANA_CHAIN,
-        ].includes(account['Blockchain Type'].toLowerCase())
-      )
-      return [...new Set(result.map(item => item['Blockchain Type']))]
-    }
-    return []
-  }, [data.csvJson, largeFileEd25519Chains])
-  const ed25519ChainsHasTon = useMemo(() => ed25519Chains.some(c => {
+  const ed25519ChainsHasTon = ed25519Chains.some(c => {
     const lower = c.toLowerCase()
     return lower === TON_CHAIN || lower === TON_TEST_CHAIN || lower === TON_TEST_CHAIN_ALIAS
-  }), [ed25519Chains])
+  })
 
   const exportPrivateKey = async () => {
     setLoading(true)
     setProgress(0)
     await sleep(0)
-
-    if (data.largeFilePath) {
-      await exportLargeFile()
-    } else {
-      await exportSmallFile()
-    }
+    await exportFile()
   }
 
-  const exportSmallFile = async () => {
-    let hdKey
-    const checkOnline = () => {
-      if (navigator.onLine) throw new NetworkDetectedError()
-    }
-
-    try {
-      setProgress(10)
-      await sleep(0)
-      checkOnline()
-      hdKey = recoverHDKeyFromMnemonics(data.mnemonicList, data.chainCode)
-      setProgress(25)
-    } catch (error: any) {
-      if (error instanceof NetworkDetectedError) {
-        setLoading(false)
-        prev()
-        return
-      }
-      const k =
-        version === 'v2'
-          ? 'Recovery.ExportKey.recoverHDKeyErrorV2'
-          : 'Recovery.ExportKey.recoverHDKeyError'
-      setErrMsg(t(k))
-      setLoading(false)
-      return
-    }
-    if (hdKey) {
-      const success = await doRecover(hdKey, checkOnline)
-      if (!success) {
-        // doRecover already set errMsg or navigated back
-      } else {
-        setProgress(100)
-        await sleep(400)
-      }
-    }
-    setLoading(false)
-  }
-
-  const exportLargeFile = async () => {
+  const exportFile = async () => {
     let derivedPath = ''
     let finalPath = ''
     const controller = new AbortController()
@@ -151,10 +81,13 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
     try {
       derivedPath = await getTempPath()
       finalPath = data.isJsonSource ? await getTempPath() : derivedPath
-      largeFileTempPathRef.current = finalPath
+      finalTempPathRef.current = finalPath
+
+      const fileSize = await getFileSize(data.inputCsvPath)
+      const workerCount = fileSize < SINGLE_WORKER_FILE_SIZE ? 1 : undefined
 
       const result = await streamCsvProcess(
-        data.largeFilePath!,
+        data.inputCsvPath,
         derivedPath,
         data.mnemonicList,
         data.chainCode,
@@ -162,7 +95,7 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
           const capped = data.isJsonSource ? Math.min(p.percent, 95) : p.percent
           setProgress(capped)
         },
-        { skipAddressCheck: !!data.isJsonSource, signal: controller.signal }
+        { skipAddressCheck: data.isJsonSource, signal: controller.signal, workerCount }
       )
 
       if (data.isJsonSource && data.jsonMappingPath) {
@@ -174,8 +107,11 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       }
 
       setErrMsg('')
-      setLargeFileTempPath(finalPath)
-      setLargeFileEd25519Chains(result.ed25519Chains)
+      setFinalTempPath(finalPath)
+      // Filter ed25519 chains to only those that need special warnings (TON/NEAR/APTOS/SUI/SOLANA)
+      const notableChains = [TON_CHAIN, TON_TEST_CHAIN, TON_TEST_CHAIN_ALIAS, NEAR_CHAIN, APTOS_CHAIN, SUI_CHAIN, SOLANA_CHAIN]
+      const notable = result.ed25519Chains.filter(c => notableChains.includes(c.toLowerCase() as typeof notableChains[number]))
+      setEd25519Chains(notable)
       setProgress(100)
       await sleep(400)
       setLoading(false)
@@ -185,8 +121,8 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         removeTempFile(derivedPath).catch(console.error)
         if (finalPath && finalPath !== derivedPath) removeTempFile(finalPath).catch(console.error)
         if (data.jsonMappingPath) removeTempFile(data.jsonMappingPath).catch(console.error)
-        if (data.largeFilePath) removeTempFile(data.largeFilePath).catch(console.error)
-        largeFileTempPathRef.current = ''
+        if (data.inputCsvPath) removeTempFile(data.inputCsvPath).catch(console.error)
+        finalTempPathRef.current = ''
         setLoading(false)
         prev()
         return
@@ -197,7 +133,7 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         if (finalPath !== derivedPath) removeTempFile(finalPath).catch(console.error)
         if (data.jsonMappingPath) removeTempFile(data.jsonMappingPath).catch(console.error)
       }
-      console.error('[RECOVER LARGE FILE ERROR]: ', error)
+      console.error('[RECOVER EXPORT FILE ERROR]: ', error)
       if (error instanceof RecoverHDKeyError) {
         const k =
           version === 'v2'
@@ -217,67 +153,19 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
     }
   }
 
-  const initSDK = async () => {
-    const blockchains = data.csvJson.map(item =>
-      item['Blockchain Type'].toLowerCase()
-    )
-    if (
-      blockchains.includes(LIQUID_CHAIN) ||
-      blockchains.includes(LIQUID_TEST_CHAIN)
-    ) {
-      await LiquidSDK.init()
-    }
-  }
-
-  const doRecover = async (hdKey: MultiAlgoHDKey, checkOnline?: () => void): Promise<boolean> => {
-    try {
-      setProgress(30)
-      await sleep(300)
-      checkOnline?.()
-      setProgress(40)
-      await initSDK()
-      setProgress(55)
-      await sleep(0) // yield before CPU-heavy derive
-      checkOnline?.()
-      const derivedArr = recoverDerivedCSV(data.csvJson, hdKey)
-      checkOnline?.()
-      setProgress(85)
-      await sleep(0) // yield before stringify
-      const derivedCsvStr = csvStringify<DerivedCSVRow>(derivedArr)
-      setProgress(95)
-      setErrMsg('')
-      setCsvStr(derivedCsvStr)
-      return true
-    } catch (error) {
-      if (error instanceof NetworkDetectedError) {
-        setCsvStr('')
-        setLoading(false)
-        prev()
-        return false
-      }
-      console.error('[RECOVER EXPORT FILE ERROR]: ', error)
-      setErrMsg(t('Recovery.ExportKey.validateAddress'))
-      return false
-    }
-  }
-
   const exportCSV = async () => {
     try {
       const filePath = await dialog.save({
         defaultPath: '/derived-recovery.csv',
       })
-      if (filePath) {
+      if (filePath && finalTempPath) {
         await registerSelectedPath(filePath)
-        if (largeFileTempPath) {
-          await copyFile(largeFileTempPath, filePath)
-          // Clean up temp files
-          removeTempFile(largeFileTempPath).catch(console.error)
-          largeFileTempPathRef.current = ''
-          if (data.largeFilePath) {
-            removeTempFile(data.largeFilePath).catch(console.error)
-          }
-        } else {
-          await fs.writeTextFile(filePath, csvStr)
+        await copyFile(finalTempPath, filePath)
+        // Clean up temp files
+        removeTempFile(finalTempPath).catch(console.error)
+        finalTempPathRef.current = ''
+        if (data.inputCsvPath) {
+          removeTempFile(data.inputCsvPath).catch(console.error)
         }
       }
       next()
@@ -343,7 +231,7 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
               <Button
                 type="primary"
                 onClick={exportCSV}
-                disabled={!!errMsg || (!csvStr && !largeFileTempPath)}
+                disabled={!!errMsg || !finalTempPath}
               >
                 {t('Recovery.ExportKey.export')}
               </Button>

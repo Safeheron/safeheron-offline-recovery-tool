@@ -1,5 +1,4 @@
 /* eslint-disable max-classes-per-file */
-import { RawCSVRow } from './mpc'
 import {
   getTempPath,
   writeFileChunk,
@@ -97,7 +96,6 @@ export interface ItemDescriptor {
   path3Ranges: number[][]
   path4: number
   path5Ranges: number[][]
-  startOffset: number
   accountCount: number
   addrCount: number
 }
@@ -124,7 +122,6 @@ export function parseItemDescriptors(jsonText: string): { items: ItemDescriptor[
   } = metadata
 
   const items: ItemDescriptor[] = []
-  let offset = 0
 
   for (const walletEntry of data as Record<string, { item: string[] }>[]) {
     for (const algoIdxStr of Object.keys(walletEntry)) {
@@ -142,9 +139,6 @@ export function parseItemDescriptors(jsonText: string): { items: ItemDescriptor[
         const path4 = parseInt(tokens[6], 10)
         const path5Ranges: number[][] = JSON.parse(tokens[7])
 
-        const accountCount = rangeSize(path3Ranges)
-        const addrCount = rangeSize(path5Ranges)
-
         items.push({
           algoName,
           blockchain: blockchainDict[blockchainIdx] as string,
@@ -154,11 +148,9 @@ export function parseItemDescriptors(jsonText: string): { items: ItemDescriptor[
           path3Ranges,
           path4,
           path5Ranges,
-          startOffset: offset,
-          accountCount,
-          addrCount,
+          accountCount: rangeSize(path3Ranges),
+          addrCount: rangeSize(path5Ranges),
         })
-        offset += accountCount * addrCount
       }
     }
   }
@@ -184,15 +176,15 @@ const CSV_COLUMNS = [
  * Expand JSON backup into a sorted temp CSV + sidecar mapping file.
  *
  * Approach: generate all rows as lightweight { csvLine, sourceIdx, sortKey }
- * structs (~200 bytes/row vs ~700 bytes/row for full RawCSVRow + sort wrapper),
- * sort in memory, then write sequentially. Supports ~8M rows within 2GB heap.
+ * structs (~200 bytes/row), sort in memory, then write sequentially.
+ * Supports ~8M rows within 2GB heap.
  */
 export async function expandSortedJsonToTempCsv(
   jsonText: string,
 ): Promise<{ tempPath: string; mappingPath: string; totalRows: number }> {
   const { items } = parseItemDescriptors(jsonText)
 
-  // Phase 1: expand all items into lightweight row structs (same iteration as convertJsonBackupToRows).
+  // Phase 1: expand all items into lightweight row structs.
   // Yield to the event loop every YIELD_INTERVAL rows so the UI stays responsive.
   const YIELD_INTERVAL = 50000
   const yieldTick = () => new Promise<void>(r => { setTimeout(r, 0) })
@@ -258,47 +250,4 @@ export async function expandSortedJsonToTempCsv(
   }
 
   return { tempPath, mappingPath, totalRows: rows.length }
-}
-
-export function positionInRanges(ranges: number[][], value: number): number {
-  let pos = 0
-  for (const [start, end] of ranges) {
-    if (value > end) {
-      pos += end - start + 1
-    } else if (value >= start) {
-      return pos + value - start
-    } else {
-      return -1
-    }
-  }
-  return -1
-}
-
-/**
- * Convert a compressed JSON backup file to RawCSVRow[].
- * Address field will be empty string — the JSON backup does not store addresses.
- */
-export function convertJsonBackupToRows(jsonText: string): RawCSVRow[] {
-  const { items } = parseItemDescriptors(jsonText)
-  const rows: RawCSVRow[] = []
-
-  for (const item of items) {
-    const accountIndices = expandRanges(item.path3Ranges)
-    const addressIndices = expandRanges(item.path5Ranges)
-
-    for (const accountIdx of accountIndices) {
-      for (const addressIdx of addressIndices) {
-        rows.push({
-          [CSV_REQUIRED_FIELD]: `m/44/${item.path2}/${accountIdx}/${item.path4}/${addressIdx}`,
-          [CSV_FIELD_NETWORK]: item.network,
-          [CSV_FIELD_ADDRESS]: '',
-          [CSV_FIELD_ADDR_TYPE]: item.addrType,
-          [CSV_FIELD_ALGO]: item.algoName,
-          [CSV_FIELD_BLOCKCHAIN]: item.blockchain,
-        })
-      }
-    }
-  }
-
-  return rows
 }

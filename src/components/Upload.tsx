@@ -3,15 +3,13 @@ import { dialog, fs } from '@tauri-apps/api'
 import styled from 'styled-components'
 
 import { useTranslation } from '@/i18n'
-import { getFileSize, registerSelectedPath, LARGE_FILE_THRESHOLD } from '@/utils/tauriFileIO'
+import { registerSelectedPath } from '@/utils/tauriFileIO'
 
 export interface FileInfo {
   name: string
-  text: string
   path: string
-  isLargeFile?: boolean
-  /** Sidecar mapping file for JSON-backup sort-then-restore-order pipeline */
-  jsonMappingPath?: string
+  /** Only populated for JSON files — used by expand-to-temp-csv. */
+  text?: string
 }
 interface Props {
   onChange: (fileInfo: FileInfo) => void
@@ -34,23 +32,13 @@ const Upload: FC<Props> = ({ onChange, file, disabled }) => {
     if (!filePath || Array.isArray(filePath)) return
 
     await registerSelectedPath(filePath)
-    const size = await getFileSize(filePath)
     const isJson = filePath.toLowerCase().endsWith('.json')
 
-    if (!isJson && size > LARGE_FILE_THRESHOLD) {
-      onChange({
-        path: filePath,
-        name: filePath,
-        text: '',
-        isLargeFile: true,
-      })
-    } else {
+    if (isJson) {
       const fileText = await fs.readTextFile(filePath)
-      onChange({
-        path: filePath,
-        name: filePath,
-        text: fileText,
-      })
+      onChange({ path: filePath, name: filePath, text: fileText })
+    } else {
+      onChange({ path: filePath, name: filePath })
     }
   }
 

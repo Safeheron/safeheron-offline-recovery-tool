@@ -94,6 +94,8 @@ export interface StreamCsvOptions {
   /** Source is JSON backup — Address field may be empty */
   skipAddressCheck?: boolean
   signal?: AbortSignal
+  /** Override worker count. Defaults to (CPU cores - 2), min 2. Use 1 for small files. */
+  workerCount?: number
 }
 
 export async function streamCsvProcess(
@@ -106,7 +108,8 @@ export async function streamCsvProcess(
 ): Promise<StreamResult> {
   const tStart = performance.now()
   const fileSize = await getFileSize(filePath)
-  const workerCount = Math.max((navigator.hardwareConcurrency || 4) - 2, 2)
+  const defaultWorkerCount = Math.max((navigator.hardwareConcurrency || 4) - 2, 2)
+  const workerCount = options?.workerCount ?? defaultWorkerCount
 
   // === Phase 1: Parse — sequential batching, preserve source order ===
   const tParse = performance.now()

@@ -223,11 +223,7 @@ const deriveAddresses = (
       return blockchainUtil.liquid.derivedAddress(pubhex)
     default:
       // Reached when a row's Blockchain Type isn't in SUPPORTED_BLOCKCHAIN.
-      // The CSV import path (csv.ts::csvParse) and the large-file worker
-      // (csvLineParser.ts::parseCsvLine) both reject unsupported chains up
-      // front, but the small-JSON path goes straight from
-      // convertJsonBackupToRows → recoverDerivedCSV with no validation, so
-      // we backstop the check here to avoid silently emitting empty addresses.
+      // Backstop check — the worker's parseCsvLine also rejects unsupported chains.
       throw new UnsupportBlockChainError(String(chainType))
   }
 }

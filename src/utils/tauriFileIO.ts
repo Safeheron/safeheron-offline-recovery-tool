@@ -2,8 +2,6 @@ import { invoke } from '@tauri-apps/api'
 
 import { splitCsvLines } from './csvLineParser'
 
-export const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024 // 50MB
-
 export const CHUNK_READ_SIZE = 4 * 1024 * 1024 // 4MB
 
 export async function getFileSize(path: string): Promise<number> {
