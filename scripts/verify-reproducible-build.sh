@@ -11,8 +11,10 @@
 #
 # Full reproducible build workflow:
 #   1. All machines: npm run check:build-env  (compare output, ensure match)
-#   2. All machines: npm run build:reproducible
-#   3. Compare SHA-256 hashes across machines (signing machine auto-verifies DMG integrity)
+#   2. All machines: npm ci && npm run build:reproducible
+#   3. All machines: npm run verify:reproducible
+#   4. Compare SHA-256 hashes across machines
+#   5. Signing machine: sign + notarize, then npm run verify:macos
 #
 
 set -euo pipefail
@@ -31,10 +33,11 @@ MOUNT_POINT=""
 
 cleanup() {
     if [ -n "$MOUNT_POINT" ] && [ -d "$MOUNT_POINT" ]; then
-        hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
+        hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null || true
+        sleep 1
     fi
     if [ -n "$TMPDIR_WORK" ] && [ -d "$TMPDIR_WORK" ]; then
-        rm -rf "$TMPDIR_WORK"
+        rm -rf "$TMPDIR_WORK" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
@@ -44,37 +47,20 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEFAULT_APP="$PROJECT_DIR/src-tauri/target/universal-apple-darwin/release/bundle/macos/Offline Recovery Tool.app"
 
-MANIFEST_OUT=""
-INPUT=""
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --manifest)
-            shift
-            MANIFEST_OUT="${1:-}"
-            [ -n "$MANIFEST_OUT" ] || { echo "Error: --manifest requires a path argument" >&2; exit 1; }
-            ;;
-        -h|--help)
-            echo "Usage: $0 [--manifest <output-path>] [path-to-.app-or-.dmg]"
-            echo ""
-            echo "Normalizes a macOS build and outputs a deterministic SHA-256 hash"
-            echo "for reproducible build verification."
-            echo ""
-            echo "  --manifest <path>  Save per-file manifest (hashes + modes) for cross-machine diff"
-            echo ""
-            echo "If no input path is given, defaults to:"
-            echo "  src-tauri/target/universal-apple-darwin/release/bundle/macos/Offline Recovery Tool.app"
-            exit 0
-            ;;
-        *)
-            INPUT="$1"
-            ;;
-    esac
-    shift
-done
-
-if [ -z "$INPUT" ]; then
+if [ $# -eq 0 ]; then
     INPUT="$DEFAULT_APP"
     info "Using default build path: $INPUT"
+elif [ $# -eq 1 ]; then
+    INPUT="$1"
+else
+    echo "Usage: $0 [path-to-.app-or-.dmg]"
+    echo ""
+    echo "Normalizes a macOS build and outputs a deterministic SHA-256 hash"
+    echo "for reproducible build verification."
+    echo ""
+    echo "If no path is given, defaults to:"
+    echo "  src-tauri/target/universal-apple-darwin/release/bundle/macos/Offline Recovery Tool.app"
+    exit 1
 fi
 
 if [ ! -e "$INPUT" ]; then
@@ -82,6 +68,7 @@ if [ ! -e "$INPUT" ]; then
 fi
 
 TMPDIR_WORK=$(mktemp -d)
+DMG_STRUCTURE_MANIFEST=""
 
 # --- Step 1: Extract .app ---
 echo "================================================================"
@@ -101,6 +88,37 @@ if [[ "$INPUT" == *.dmg ]]; then
     fi
     info "Found: $(basename "$APP_IN_DMG")"
     cp -R "$APP_IN_DMG" "$WORK_APP"
+
+    # Collect DMG root structure before unmounting
+    APP_BASENAME="$(basename "$APP_IN_DMG")"
+    DMG_STRUCTURE_MANIFEST="$TMPDIR_WORK/dmg_structure.txt"
+    DMG_VOL_NAME="$(diskutil info "$MOUNT_POINT" | grep "Volume Name" | awk -F: '{print $2}' | xargs)"
+    {
+        echo "volume:$DMG_VOL_NAME"
+        # Files excluded from hash: OS-generated metadata, non-deterministic between builds
+        EXCLUDE_FROM_HASH=(".DS_Store" ".fseventsd" ".Trashes")
+        while IFS= read -r entry_path; do
+            entry_name="$(basename "$entry_path")"
+            # Skip the .app — handled separately with signature normalization
+            [[ "$entry_name" == "$APP_BASENAME" ]] && continue
+            # Skip known non-deterministic OS metadata
+            skip=false
+            for excl in "${EXCLUDE_FROM_HASH[@]}"; do
+                [[ "$entry_name" == "$excl" ]] && skip=true && break
+            done
+            $skip && continue
+            if [ -L "$entry_path" ]; then
+                echo "link:$entry_name=$(readlink "$entry_path")"
+            elif [ -f "$entry_path" ]; then
+                echo "file:$entry_name=$(shasum -a 256 "$entry_path" | awk '{print $1}')"
+            elif [ -d "$entry_path" ]; then
+                dir_hash="$(cd "$entry_path" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do shasum -a 256 "$f"; done | shasum -a 256 | awk '{print $1}')"
+                echo "dir:$entry_name=$dir_hash"
+            fi
+        done < <(find "$MOUNT_POINT" -maxdepth 1 -mindepth 1 | LC_ALL=C sort)
+    } > "$DMG_STRUCTURE_MANIFEST"
+    info "DMG structure collected (volume: $DMG_VOL_NAME)"
+    while IFS= read -r line; do info "  $line"; done < "$DMG_STRUCTURE_MANIFEST"
 
     hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
     MOUNT_POINT=""
@@ -128,18 +146,48 @@ echo "Step 2: Stripping code signatures..."
 # metadata bytes that must be normalized this way).
 codesign --sign - --force --deep "$WORK_APP" 2>/dev/null || true
 
-# Remove signatures from every Mach-O in the bundle
-# (main executable, nested frameworks, dylibs, helper executables, etc.)
+# Zero out __LINKEDIT and LC_UUID in a single thin Mach-O slice.
+# __LINKEDIT contains symbol tables and linker metadata whose ordering
+# is non-deterministic across machines in Apple's ld.
+# LC_UUID is derived from binary content and differs when __LINKEDIT differs.
+normalize_macho() {
+    local file="$1"
+    # Zero __LINKEDIT
+    local off size
+    off=$(otool -l "$file" | awk '/segname __LINKEDIT/{found=1} found && /fileoff/{print $2; exit}')
+    size=$(otool -l "$file" | awk '/segname __LINKEDIT/{found=1} found && /filesize/{print $2; exit}')
+    if [ -n "$off" ] && [ -n "$size" ] && [ "$size" -gt 0 ]; then
+        dd if=/dev/zero of="$file" bs=1 seek="$off" count="$size" conv=notrunc 2>/dev/null
+    fi
+    # Zero LC_UUID (cmd=0x1b, cmdsize=0x18, followed by 16-byte UUID)
+    perl -0777 -pi -e 's/\x1b\x00\x00\x00\x18\x00\x00\x00.{16}/\x1b\x00\x00\x00\x18\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00/s' "$file"
+}
+
+# Remove signatures, then zero __LINKEDIT for every Mach-O in the bundle.
 while IFS= read -r f; do
     if file "$f" 2>/dev/null | grep -qE "Mach-O"; then
         codesign --remove-signature "$f" 2>/dev/null || true
+        if file "$f" | grep -q "universal binary"; then
+            ARCHS=$(lipo -info "$f" | sed 's/.*: //')
+            SLICE_ARGS=()
+            for arch in $ARCHS; do
+                SLICE="${TMPDIR_WORK}/slice_${arch}"
+                lipo -thin "$arch" "$f" -output "$SLICE"
+                normalize_macho "$SLICE"
+                SLICE_ARGS+=("$SLICE")
+            done
+            lipo -create "${SLICE_ARGS[@]}" -output "$f"
+            rm -f "${SLICE_ARGS[@]}"
+        else
+            normalize_macho "$f"
+        fi
     fi
 done < <(find "$WORK_APP" -type f)
 
 find "$WORK_APP" -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true
 find "$WORK_APP" -name "CodeResources" -delete 2>/dev/null || true
 
-info "Code signatures removed"
+info "Code signatures and linker metadata normalized"
 
 # --- Step 3: Normalize Info.plist ---
 echo "================================================================"
@@ -158,26 +206,19 @@ fi
 echo "================================================================"
 echo "Step 4: Computing deterministic hash..."
 
-# Hash = (per-file SHA-256) ++ (mode + path of every entry).
-# Including stat output catches cases where file content is identical but
-# permissions differ — e.g. the main executable's +x bit getting dropped
-# would leave shasum unchanged but break the installed app.
-# Use -print0 / sort -z / xargs -0 so one invocation handles many files
-# (fork-per-file is ~10x slower on a bundle with hundreds of files) and
-# filenames containing newlines are handled correctly.
-#
-# tee saves the intermediate per-file data (the "manifest") so it can be
-# diff'd across machines when the final hash doesn't match.
-MANIFEST_TMP="$TMPDIR_WORK/manifest.txt"
-HASH=$(cd "$WORK_APP" && {
-    find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256
-    find . -print0            | LC_ALL=C sort -z | xargs -0 stat -f '%Lp %N'
-} | tee "$MANIFEST_TMP" | shasum -a 256 | awk '{print $1}')
+# .app content hash (normalized: signatures stripped, Info.plist normalized)
+APP_HASH=$(cd "$WORK_APP" && find . -type f | LC_ALL=C sort | while IFS= read -r file; do
+    shasum -a 256 "$file"
+done | shasum -a 256 | awk '{print $1}')
+info ".app content hash:   $APP_HASH"
 
-# Export manifest before cleanup wipes TMPDIR_WORK.
-if [ -n "$MANIFEST_OUT" ]; then
-    cp "$MANIFEST_TMP" "$MANIFEST_OUT"
-    info "Manifest saved to: $MANIFEST_OUT"
+# Combine with DMG structure hash (volume name, symlinks, other root files)
+if [ -n "$DMG_STRUCTURE_MANIFEST" ]; then
+    STRUCTURE_HASH="$(shasum -a 256 "$DMG_STRUCTURE_MANIFEST" | awk '{print $1}')"
+    info "DMG structure hash:  $STRUCTURE_HASH"
+    HASH="$(echo "${APP_HASH}  ${STRUCTURE_HASH}" | shasum -a 256 | awk '{print $1}')"
+else
+    HASH="$APP_HASH"
 fi
 
 # --- Step 5: Collect metadata ---
