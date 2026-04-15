@@ -4,6 +4,12 @@ import {
   tokenizeItemString,
   expandRanges,
   convertJsonBackupToRows,
+  parseItemDescriptors,
+  computeJsonRowCount,
+  positionInRanges,
+  validateJsonBackup,
+  InvalidFormatError,
+  UnsupportedVersionError,
 } from '../utils/jsonBackup'
 
 // ---------------------------------------------------------------------------
@@ -300,5 +306,110 @@ describe('convertJsonBackupToRows', () => {
         row['Blockchain Type'].toLowerCase()
       )
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// positionInRanges
+// ---------------------------------------------------------------------------
+
+describe('positionInRanges', () => {
+  test('value at start of first range', () => {
+    expect(positionInRanges([[0, 2], [5, 6]], 0)).toBe(0)
+  })
+  test('value in middle of first range', () => {
+    expect(positionInRanges([[0, 2], [5, 6]], 1)).toBe(1)
+  })
+  test('value at end of first range', () => {
+    expect(positionInRanges([[0, 2], [5, 6]], 2)).toBe(2)
+  })
+  test('value at start of second range', () => {
+    expect(positionInRanges([[0, 2], [5, 6]], 5)).toBe(3)
+  })
+  test('value at end of second range', () => {
+    expect(positionInRanges([[0, 2], [5, 6]], 6)).toBe(4)
+  })
+  test('value in gap between ranges', () => {
+    expect(positionInRanges([[0, 2], [5, 6]], 3)).toBe(-1)
+  })
+  test('value before all ranges', () => {
+    expect(positionInRanges([[5, 6]], 2)).toBe(-1)
+  })
+  test('value after all ranges', () => {
+    expect(positionInRanges([[0, 2]], 5)).toBe(-1)
+  })
+  test('single-element range', () => {
+    expect(positionInRanges([[3, 3]], 3)).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseItemDescriptors
+// ---------------------------------------------------------------------------
+
+describe('parseItemDescriptors', () => {
+  test('returns correct number of items', () => {
+    const { items } = parseItemDescriptors(BASE_JSON)
+    expect(items.length).toBe(7)
+  })
+  test('startOffset accumulates correctly', () => {
+    const { items } = parseItemDescriptors(BASE_JSON)
+    expect(items[0].startOffset).toBe(0)
+    expect(items[1].startOffset).toBe(1)
+    expect(items[2].startOffset).toBe(4)
+  })
+  test('accountCount and addrCount match expanded sizes', () => {
+    const { items } = parseItemDescriptors(BASE_JSON)
+    expect(items[1].accountCount).toBe(3)
+    expect(items[1].addrCount).toBe(1)
+    expect(items[2].accountCount).toBe(1)
+    expect(items[2].addrCount).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// computeJsonRowCount
+// ---------------------------------------------------------------------------
+
+describe('computeJsonRowCount', () => {
+  test('matches convertJsonBackupToRows length', () => {
+    const rows = convertJsonBackupToRows(BASE_JSON)
+    const count = computeJsonRowCount(BASE_JSON)
+    expect(count).toBe(rows.length)
+    expect(count).toBe(17)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// validateJsonBackup
+// ---------------------------------------------------------------------------
+
+describe('validateJsonBackup', () => {
+  test('throws InvalidFormatError for null', () => {
+    expect(() => validateJsonBackup(null)).toThrow(InvalidFormatError)
+  })
+
+  test('throws InvalidFormatError for non-object', () => {
+    expect(() => validateJsonBackup('string')).toThrow(InvalidFormatError)
+    expect(() => validateJsonBackup(123)).toThrow(InvalidFormatError)
+  })
+
+  test('throws InvalidFormatError for missing metadata', () => {
+    expect(() => validateJsonBackup({ data: [] })).toThrow(InvalidFormatError)
+  })
+
+  test('throws InvalidFormatError for missing data', () => {
+    expect(() => validateJsonBackup({ metadata: { v: 'v1' } })).toThrow(InvalidFormatError)
+  })
+
+  test('throws UnsupportedVersionError for unsupported version', () => {
+    expect(() => validateJsonBackup({ metadata: { v: 'v99' }, data: [] })).toThrow(UnsupportedVersionError)
+  })
+
+  test('does not throw for valid v1 backup', () => {
+    expect(() => validateJsonBackup({
+      metadata: { v: 'v1', blockchain: [], network: [], algorithm: [], at: [] },
+      data: [],
+    })).not.toThrow()
   })
 })

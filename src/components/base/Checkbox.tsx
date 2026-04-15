@@ -23,30 +23,31 @@ const Checkbox: FC<Props> = ({
     }
   }
   return (
-    <SCheckbox onClick={handleClick}>
+    <SCheckbox>
       <input
         ref={inputRef}
         type="checkbox"
         onChange={handleChange}
         checked={checked}
       />
-      <div className={`input-inner ${checked ? 'checked' : ''}`} />
+      <div className={`input-inner ${checked ? 'checked' : ''}`} onClick={handleClick} />
 
-      <span>{children}</span>
+      <span onClick={handleClick}>{children}</span>
     </SCheckbox>
   )
 }
 
 const SCheckbox = styled.div`
   font-size: 12px;
-  display: flex;
-  cursor: pointer;
+  display: inline-flex;
+  cursor: default;
   align-items: center;
 
   .input-inner {
     margin-right: 10px;
     width: 16px;
     height: 16px;
+    cursor: pointer;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     position: relative;
@@ -83,13 +84,16 @@ const SCheckbox = styled.div`
       font-style: normal;
       font-weight: 400;
       line-height: normal;
+      cursor: pointer;
     }
   }
 
-  &:hover {
-    .input-inner {
-      border-color: ${({ theme }) => theme.color.brand};
-    }
+  .input-inner:hover {
+    border-color: ${({ theme }) => theme.color.brand};
+  }
+
+  &:has(span:hover) .input-inner {
+    border-color: ${({ theme }) => theme.color.brand};
   }
   input {
     display: none;

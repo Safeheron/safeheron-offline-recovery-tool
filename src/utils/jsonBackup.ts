@@ -1,6 +1,19 @@
 /* eslint-disable max-classes-per-file */
 import { RawCSVRow } from './mpc'
-import { CSV_FIELD_ADDR_TYPE } from './const'
+import {
+  getTempPath,
+  writeFileChunk,
+} from './tauriFileIO'
+import { escapeCsvField } from './csvLineParser'
+import { sanitizeCsvValue } from './csv'
+import {
+  CSV_FIELD_ADDR_TYPE,
+  CSV_FIELD_BLOCKCHAIN,
+  CSV_FIELD_NETWORK,
+  CSV_FIELD_ADDRESS,
+  CSV_REQUIRED_FIELD,
+  CSV_FIELD_ALGO,
+} from './const'
 
 export class InvalidFormatError extends Error {
   constructor() {
@@ -75,20 +88,27 @@ export function expandRanges(ranges: number[][]): number[] {
   return result
 }
 
-/**
- * Convert a compressed JSON backup file to RawCSVRow[].
- * Address field will be empty string — the JSON backup does not store addresses.
- *
- * Template (metadata.tp): {blockchain},{network},{type},{at},{path2},{path3},{path4},{path5}
- * - blockchain, network, type, at: indices into the corresponding metadata arrays
- * - path2: coinType
- * - path3: [[accountStart, accountEnd], ...] — account index ranges
- * - path4: change (typically 0)
- * - path5: [[addrStart, addrEnd], ...] — address index ranges
- *
- * The outer key of each wallet entry is the algorithm index into metadata.algorithm.
- */
-export function convertJsonBackupToRows(jsonText: string): RawCSVRow[] {
+export interface ItemDescriptor {
+  algoName: string
+  blockchain: string
+  network: string
+  addrType: string
+  path2: number
+  path3Ranges: number[][]
+  path4: number
+  path5Ranges: number[][]
+  startOffset: number
+  accountCount: number
+  addrCount: number
+}
+
+function rangeSize(ranges: number[][]): number {
+  let n = 0
+  for (const [s, e] of ranges) n += e - s + 1
+  return n
+}
+
+export function parseItemDescriptors(jsonText: string): { items: ItemDescriptor[]; metadata: Record<string, any> } {
   let json: unknown
   try {
     json = JSON.parse(jsonText)
@@ -103,7 +123,8 @@ export function convertJsonBackupToRows(jsonText: string): RawCSVRow[] {
     algorithm: algorithmDict,
   } = metadata
 
-  const rows: RawCSVRow[] = []
+  const items: ItemDescriptor[] = []
+  let offset = 0
 
   for (const walletEntry of data as Record<string, { item: string[] }>[]) {
     for (const algoIdxStr of Object.keys(walletEntry)) {
@@ -113,35 +134,168 @@ export function convertJsonBackupToRows(jsonText: string): RawCSVRow[] {
 
       for (const itemStr of item) {
         const tokens = tokenizeItemString(itemStr)
-        // tokens: [blockchain_idx, network_idx, type_idx, at_idx, path2, path3, path4, path5]
         const blockchainIdx = parseInt(tokens[0], 10)
         const networkIdx = parseInt(tokens[1], 10)
-        // tokens[2] = type_idx (UTXO/NON-UTXO) — not needed for recovery
         const atIdx = parseInt(tokens[3], 10)
         const path2 = parseInt(tokens[4], 10)
         const path3Ranges: number[][] = JSON.parse(tokens[5])
         const path4 = parseInt(tokens[6], 10)
         const path5Ranges: number[][] = JSON.parse(tokens[7])
 
-        const csvBlockchain = blockchainDict[blockchainIdx] as string
-        const networkName = networkDict[networkIdx] as string
-        const addrType = (metadata.at as string[])[atIdx]
+        const accountCount = rangeSize(path3Ranges)
+        const addrCount = rangeSize(path5Ranges)
 
-        const accountIndices = expandRanges(path3Ranges)
-        const addressIndices = expandRanges(path5Ranges)
+        items.push({
+          algoName,
+          blockchain: blockchainDict[blockchainIdx] as string,
+          network: networkDict[networkIdx] as string,
+          addrType: (metadata.at as string[])[atIdx],
+          path2,
+          path3Ranges,
+          path4,
+          path5Ranges,
+          startOffset: offset,
+          accountCount,
+          addrCount,
+        })
+        offset += accountCount * addrCount
+      }
+    }
+  }
 
-        for (const accountIdx of accountIndices) {
-          for (const addressIdx of addressIndices) {
-            rows.push({
-              'HD Path': `m/44/${path2}/${accountIdx}/${path4}/${addressIdx}`,
-              Network: networkName,
-              Address: '',
-              [CSV_FIELD_ADDR_TYPE]: addrType,
-              Algorithm: algoName,
-              'Blockchain Type': csvBlockchain,
-            })
-          }
+  return { items, metadata }
+}
+
+export function computeJsonRowCount(jsonText: string): number {
+  const { items } = parseItemDescriptors(jsonText)
+  return items.reduce((sum, item) => sum + item.accountCount * item.addrCount, 0)
+}
+
+const CSV_COLUMNS = [
+  CSV_FIELD_BLOCKCHAIN,
+  CSV_FIELD_NETWORK,
+  CSV_FIELD_ADDRESS,
+  CSV_FIELD_ADDR_TYPE,
+  CSV_REQUIRED_FIELD,
+  CSV_FIELD_ALGO,
+]
+
+/**
+ * Expand JSON backup into a sorted temp CSV + sidecar mapping file.
+ *
+ * Approach: generate all rows as lightweight { csvLine, sourceIdx, sortKey }
+ * structs (~200 bytes/row vs ~700 bytes/row for full RawCSVRow + sort wrapper),
+ * sort in memory, then write sequentially. Supports ~8M rows within 2GB heap.
+ */
+export async function expandSortedJsonToTempCsv(
+  jsonText: string,
+): Promise<{ tempPath: string; mappingPath: string; totalRows: number }> {
+  const { items } = parseItemDescriptors(jsonText)
+
+  // Phase 1: expand all items into lightweight row structs (same iteration as convertJsonBackupToRows).
+  // Yield to the event loop every YIELD_INTERVAL rows so the UI stays responsive.
+  const YIELD_INTERVAL = 50000
+  const yieldTick = () => new Promise<void>(r => { setTimeout(r, 0) })
+
+  // Initial yield so caller's state updates (e.g. "importing..." spinner) render first.
+  await yieldTick()
+
+  const rows: Array<{ csvLine: string; sourceIdx: number; sortKey: string }> = []
+  let sourceIdx = 0
+
+  for (const item of items) {
+    const accountIndices = expandRanges(item.path3Ranges)
+    const addressIndices = expandRanges(item.path5Ranges)
+
+    for (const accountIdx of accountIndices) {
+      const parentPath = `m/44/${item.path2}/${accountIdx}/${item.path4}`
+      for (const addressIdx of addressIndices) {
+        const hdPath = `${parentPath}/${addressIdx}`
+        const fields = [
+          item.blockchain,
+          item.network,
+          '',
+          item.addrType,
+          hdPath,
+          item.algoName,
+        ]
+        const csvLine = fields.map(f => escapeCsvField(String(sanitizeCsvValue(f)))).join(',')
+        rows.push({
+          csvLine,
+          sourceIdx,
+          sortKey: `${item.algoName}\x00${parentPath}\x00${String(addressIdx).padStart(10, '0')}`,
+        })
+        sourceIdx++
+        if (sourceIdx % YIELD_INTERVAL === 0) {
+          // eslint-disable-next-line no-await-in-loop
+          await yieldTick()
         }
+      }
+    }
+  }
+
+  // Yield before sort (sort is synchronous, ~1s, unavoidable single block)
+  await yieldTick()
+
+  // Phase 2: sort by (algo, parentPath, lastIndex)
+  rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+
+  // Phase 3: write sorted CSV + mapping file
+  const tempPath = await getTempPath()
+  const mappingPath = await getTempPath()
+  await writeFileChunk(tempPath, `${CSV_COLUMNS.join(',')}\n`, false)
+  await writeFileChunk(mappingPath, '', false)
+
+  const CHUNK_ROWS = 5000
+  for (let i = 0; i < rows.length; i += CHUNK_ROWS) {
+    const slice = rows.slice(i, i + CHUNK_ROWS)
+    const csvChunk = `${slice.map(r => r.csvLine).join('\n')}\n`
+    const mapChunk = `${slice.map(r => r.sourceIdx).join('\n')}\n`
+    // eslint-disable-next-line no-await-in-loop
+    await writeFileChunk(tempPath, csvChunk, true)
+    // eslint-disable-next-line no-await-in-loop
+    await writeFileChunk(mappingPath, mapChunk, true)
+  }
+
+  return { tempPath, mappingPath, totalRows: rows.length }
+}
+
+export function positionInRanges(ranges: number[][], value: number): number {
+  let pos = 0
+  for (const [start, end] of ranges) {
+    if (value > end) {
+      pos += end - start + 1
+    } else if (value >= start) {
+      return pos + value - start
+    } else {
+      return -1
+    }
+  }
+  return -1
+}
+
+/**
+ * Convert a compressed JSON backup file to RawCSVRow[].
+ * Address field will be empty string — the JSON backup does not store addresses.
+ */
+export function convertJsonBackupToRows(jsonText: string): RawCSVRow[] {
+  const { items } = parseItemDescriptors(jsonText)
+  const rows: RawCSVRow[] = []
+
+  for (const item of items) {
+    const accountIndices = expandRanges(item.path3Ranges)
+    const addressIndices = expandRanges(item.path5Ranges)
+
+    for (const accountIdx of accountIndices) {
+      for (const addressIdx of addressIndices) {
+        rows.push({
+          [CSV_REQUIRED_FIELD]: `m/44/${item.path2}/${accountIdx}/${item.path4}/${addressIdx}`,
+          [CSV_FIELD_NETWORK]: item.network,
+          [CSV_FIELD_ADDRESS]: '',
+          [CSV_FIELD_ADDR_TYPE]: item.addrType,
+          [CSV_FIELD_ALGO]: item.algoName,
+          [CSV_FIELD_BLOCKCHAIN]: item.blockchain,
+        })
       }
     }
   }

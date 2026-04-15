@@ -28,7 +28,7 @@ import {
   TON_TEST_CHAIN_ALIAS,
 } from '@/utils/const'
 import { LiquidSDK } from '@/wasm/liquidSDK'
-import { streamCsvProcess, StreamProgress, RecoverHDKeyError } from '@/utils/streamCsv'
+import { streamCsvProcess, StreamProgress, RecoverHDKeyError, NetworkDetectedError } from '@/utils/streamCsv'
 import { getTempPath, copyFile, registerSelectedPath, removeTempFile } from '@/utils/tauriFileIO'
 import { restoreSourceOrder } from '@/utils/restoreSourceOrder'
 
@@ -40,6 +40,7 @@ export interface RecoveryItemModel {
   isJsonSource?: boolean
   /** Sidecar mapping file — maps sorted-derive-order line N to original sourceIdx */
   jsonMappingPath?: string
+  originalFile?: { name: string; path: string }
 }
 
 interface Props {
@@ -105,13 +106,22 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
 
   const exportSmallFile = async () => {
     let hdKey
+    const checkOnline = () => {
+      if (navigator.onLine) throw new NetworkDetectedError()
+    }
 
     try {
       setProgress(10)
       await sleep(0)
+      checkOnline()
       hdKey = recoverHDKeyFromMnemonics(data.mnemonicList, data.chainCode)
       setProgress(25)
     } catch (error: any) {
+      if (error instanceof NetworkDetectedError) {
+        setLoading(false)
+        prev()
+        return
+      }
       const k =
         version === 'v2'
           ? 'Recovery.ExportKey.recoverHDKeyErrorV2'
@@ -121,8 +131,10 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       return
     }
     if (hdKey) {
-      const success = await doRecover(hdKey)
-      if (success) {
+      const success = await doRecover(hdKey, checkOnline)
+      if (!success) {
+        // doRecover already set errMsg or navigated back
+      } else {
         setProgress(100)
         await sleep(400)
       }
@@ -131,15 +143,12 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
   }
 
   const exportLargeFile = async () => {
-    // Hoisted so the catch block can clean up intermediate files on error.
     let derivedPath = ''
     let finalPath = ''
+    const controller = new AbortController()
+    const onOnline = () => controller.abort()
+    window.addEventListener('online', onOnline)
     try {
-      // For JSON sources we run an extra "restore source order" pass because the
-      // rows in `data.largeFilePath` were sorted by (algo, parentPath) in
-      // ImportFile::writeTempCsv to make the worker parent-cache effective. The
-      // sorted output comes out of streamCsvProcess in that same sorted order;
-      // we then external-bucket-sort it back to original source order.
       derivedPath = await getTempPath()
       finalPath = data.isJsonSource ? await getTempPath() : derivedPath
       largeFileTempPathRef.current = finalPath
@@ -150,18 +159,16 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         data.mnemonicList,
         data.chainCode,
         (p: StreamProgress) => {
-          // Reserve the last 5% for the restore-order pass on JSON paths so the
-          // progress bar still reflects ongoing work after derive completes.
           const capped = data.isJsonSource ? Math.min(p.percent, 95) : p.percent
           setProgress(capped)
         },
-        { skipAddressCheck: !!data.isJsonSource }
+        { skipAddressCheck: !!data.isJsonSource, signal: controller.signal }
       )
 
       if (data.isJsonSource && data.jsonMappingPath) {
         await restoreSourceOrder(derivedPath, finalPath, result.totalRows, data.jsonMappingPath, rp => {
           setProgress(95 + Math.round(rp.fraction * 5))
-        })
+        }, controller.signal)
         removeTempFile(derivedPath).catch(console.error)
         removeTempFile(data.jsonMappingPath).catch(console.error)
       }
@@ -173,9 +180,18 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       await sleep(400)
       setLoading(false)
     } catch (error: any) {
-      // Clean up intermediate temp files that the success path would have removed.
-      // derivedPath / finalPath may not exist yet (e.g. streamCsvProcess failed
-      // before writing anything), so swallow "File does not exist" errors.
+      if (error instanceof NetworkDetectedError) {
+        // Network detected during derive — delete ALL intermediate files (may contain private keys)
+        removeTempFile(derivedPath).catch(console.error)
+        if (finalPath && finalPath !== derivedPath) removeTempFile(finalPath).catch(console.error)
+        if (data.jsonMappingPath) removeTempFile(data.jsonMappingPath).catch(console.error)
+        if (data.largeFilePath) removeTempFile(data.largeFilePath).catch(console.error)
+        largeFileTempPathRef.current = ''
+        setLoading(false)
+        prev()
+        return
+      }
+      // Non-abort errors: existing handling
       if (data.isJsonSource) {
         removeTempFile(derivedPath).catch(console.error)
         if (finalPath !== derivedPath) removeTempFile(finalPath).catch(console.error)
@@ -193,11 +209,11 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       } else if (error instanceof UnsupportBlockChainError) {
         setErrMsg(t('Recovery.ImportFile.error.unsupportBlockChain', { blockchain: error.message }))
       } else {
-        // Address mismatch, bad HD path, library-thrown errors from derive:
-        // all point at the data file being wrong.
         setErrMsg(t('Recovery.ExportKey.validateAddress'))
       }
       setLoading(false)
+    } finally {
+      window.removeEventListener('online', onOnline)
     }
   }
 
@@ -213,15 +229,18 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
     }
   }
 
-  const doRecover = async (hdKey: MultiAlgoHDKey): Promise<boolean> => {
+  const doRecover = async (hdKey: MultiAlgoHDKey, checkOnline?: () => void): Promise<boolean> => {
     try {
       setProgress(30)
       await sleep(300)
+      checkOnline?.()
       setProgress(40)
       await initSDK()
       setProgress(55)
       await sleep(0) // yield before CPU-heavy derive
+      checkOnline?.()
       const derivedArr = recoverDerivedCSV(data.csvJson, hdKey)
+      checkOnline?.()
       setProgress(85)
       await sleep(0) // yield before stringify
       const derivedCsvStr = csvStringify<DerivedCSVRow>(derivedArr)
@@ -230,10 +249,13 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       setCsvStr(derivedCsvStr)
       return true
     } catch (error) {
+      if (error instanceof NetworkDetectedError) {
+        setCsvStr('')
+        setLoading(false)
+        prev()
+        return false
+      }
       console.error('[RECOVER EXPORT FILE ERROR]: ', error)
-      // HDKey errors are handled by the caller (exportSmallFile) before this
-      // function runs, so any error here is a data-file problem (unsupported
-      // chain, bad HD path, address mismatch, etc.).
       setErrMsg(t('Recovery.ExportKey.validateAddress'))
       return false
     }

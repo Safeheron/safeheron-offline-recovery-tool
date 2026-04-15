@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api'
 
+import { splitCsvLines } from './csvLineParser'
+
 export const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024 // 50MB
 
 export const CHUNK_READ_SIZE = 4 * 1024 * 1024 // 4MB
@@ -39,4 +41,62 @@ export async function removeTempFile(path: string): Promise<void> {
 
 export async function registerSelectedPath(path: string): Promise<void> {
   return invoke<void>('register_selected_path', { path })
+}
+
+// --- Shared streaming helpers ---
+
+/**
+ * Stream a text file line-by-line, calling `onLine` for each non-empty line.
+ * Optionally calls `onChunkEnd(offset, fileSize)` after each chunk for progress / abort checks.
+ * Returns the total number of lines emitted.
+ */
+export async function streamFileLines(
+  filePath: string,
+  fileSize: number,
+  onLine: (line: string) => Promise<void> | void,
+  onChunkEnd?: (offset: number, fileSize: number) => void,
+): Promise<number> {
+  let offset = 0
+  let leftover = ''
+  let count = 0
+  while (offset < fileSize) {
+    const n = Math.min(CHUNK_READ_SIZE, fileSize - offset)
+    // eslint-disable-next-line no-await-in-loop
+    const { text, bytesRead } = await readFileChunk(filePath, offset, n)
+    if (bytesRead === 0) break
+    offset += bytesRead
+    const combined = leftover + text
+    const [lines, remainder] = splitCsvLines(combined)
+    leftover = remainder
+    for (const line of lines) {
+      if (line) {
+        // eslint-disable-next-line no-await-in-loop
+        await onLine(line)
+        count++
+      }
+    }
+    onChunkEnd?.(offset, fileSize)
+  }
+  if (leftover.trim()) {
+    await onLine(leftover.trim())
+    count++
+  }
+  return count
+}
+
+/**
+ * Read an entire file into a string (chunked to avoid exceeding IPC limits).
+ */
+export async function readFileText(filePath: string, fileSize: number): Promise<string> {
+  let text = ''
+  let offset = 0
+  while (offset < fileSize) {
+    const n = Math.min(CHUNK_READ_SIZE, fileSize - offset)
+    // eslint-disable-next-line no-await-in-loop
+    const { text: chunk, bytesRead } = await readFileChunk(filePath, offset, n)
+    if (bytesRead === 0) break
+    offset += bytesRead
+    text += chunk
+  }
+  return text
 }

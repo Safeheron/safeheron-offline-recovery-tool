@@ -53,13 +53,14 @@ const PrivateKeyRecovery = () => {
   )
 
   const setCsvJson = useCallback(
-    (arr: any[], largeFilePath?: string, isJsonSource?: boolean, jsonMappingPath?: string) => {
+    (arr: any[], largeFilePath?: string, isJsonSource?: boolean, jsonMappingPath?: string, originalFile?: { name: string; path: string }) => {
       setData({
         ...data,
         csvJson: arr,
         largeFilePath,
         isJsonSource,
         jsonMappingPath,
+        originalFile,
       })
     },
     [data]
@@ -122,7 +123,7 @@ const PrivateKeyRecovery = () => {
       {
         key: 'importFile',
         value: t('Recovery.step.importFile'),
-        render: () => <ImportFile next={next} onComplete={setCsvJson} />,
+        render: () => <ImportFile next={next} onComplete={setCsvJson} originalFile={data.originalFile} />,
       },
       {
         key: 'exportKey',

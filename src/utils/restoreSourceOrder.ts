@@ -20,14 +20,15 @@
  *   ~6MB), regardless of total row count.
  */
 import {
-  CHUNK_READ_SIZE,
   getFileSize,
-  readFileChunk,
   writeFileChunk,
   getTempPath,
   removeTempFile,
+  streamFileLines,
+  readFileText,
 } from './tauriFileIO'
 import { splitCsvLines } from './csvLineParser'
+import { NetworkDetectedError } from './errors'
 
 const TARGET_ROWS_PER_BUCKET = 25_000
 // Lines are queued in memory per-bucket and flushed once a threshold is hit;
@@ -40,48 +41,12 @@ export interface RestoreProgress {
 }
 
 /**
- * Stream a text file line-by-line, calling `onLine` for each non-empty line.
- * Returns the total number of lines emitted.
- */
-async function streamLines(
-  filePath: string,
-  fileSize: number,
-  onLine: (line: string) => Promise<void> | void,
-): Promise<number> {
-  let offset = 0
-  let leftover = ''
-  let count = 0
-  while (offset < fileSize) {
-    const n = Math.min(CHUNK_READ_SIZE, fileSize - offset)
-    // eslint-disable-next-line no-await-in-loop
-    const { text, bytesRead } = await readFileChunk(filePath, offset, n)
-    if (bytesRead === 0) break
-    offset += bytesRead
-    const combined = leftover + text
-    const [lines, remainder] = splitCsvLines(combined)
-    leftover = remainder
-    for (const line of lines) {
-      if (line) {
-        // eslint-disable-next-line no-await-in-loop
-        await onLine(line)
-        count++
-      }
-    }
-  }
-  if (leftover.trim()) {
-    await onLine(leftover.trim())
-    count++
-  }
-  return count
-}
-
-/**
  * Read the sidecar mapping file (one sourceIdx per line) into a number array.
  */
 async function readMappingFile(mappingPath: string): Promise<number[]> {
   const size = await getFileSize(mappingPath)
   const mapping: number[] = []
-  await streamLines(mappingPath, size, line => {
+  await streamFileLines(mappingPath, size, line => {
     const idx = parseInt(line, 10)
     if (Number.isFinite(idx)) mapping.push(idx)
   })
@@ -101,6 +66,7 @@ export async function restoreSourceOrder(
   totalRows: number,
   mappingPath: string,
   onProgress?: (p: RestoreProgress) => void,
+  signal?: AbortSignal,
 ): Promise<{ totalRows: number; bucketCount: number; ms: number }> {
   const t0 = performance.now()
 
@@ -108,6 +74,12 @@ export async function restoreSourceOrder(
     await writeFileChunk(finalPath, '', false)
     return { totalRows: 0, bucketCount: 0, ms: performance.now() - t0 }
   }
+
+  const checkAborted = () => {
+    if (signal?.aborted) throw new NetworkDetectedError()
+  }
+
+  checkAborted()
 
   // Read the mapping (sourceIdx per sorted-line) into memory (~17MB for 2.37M rows).
   const mapping = await readMappingFile(mappingPath)
@@ -148,44 +120,23 @@ export async function restoreSourceOrder(
       bucketBuffers[b] = []
     }
 
-    let offset = 0
-    let leftover = ''
-    while (offset < fileSize) {
-      const n = Math.min(CHUNK_READ_SIZE, fileSize - offset)
-      // eslint-disable-next-line no-await-in-loop
-      const { text, bytesRead } = await readFileChunk(derivedPath, offset, n)
-      if (bytesRead === 0) break
-      offset += bytesRead
-      const combined = leftover + text
-      const [lines, remainder] = splitCsvLines(combined)
-      leftover = remainder
-
-      for (const line of lines) {
-        if (!line) {
-          // skip empty lines
-        } else if (!headerParsed) {
-          headerLine = line
-          headerParsed = true
-        } else {
-          const sourceIdx = lineIdx < mapping.length ? mapping[lineIdx] : lineIdx
-          lineIdx++
-          const b = Math.min(bucketCount - 1, Math.floor(sourceIdx / bucketRange))
-          // Prefix the line with sourceIdx for in-bucket sorting, separated by \t
-          bucketBuffers[b].push(`${sourceIdx}\t${line}`)
-          if (bucketBuffers[b].length >= BUCKET_FLUSH_THRESHOLD) {
-            // eslint-disable-next-line no-await-in-loop
-            await flushBucket(b)
-          }
+    await streamFileLines(derivedPath, fileSize, async line => {
+      if (!headerParsed) {
+        headerLine = line
+        headerParsed = true
+      } else {
+        const sourceIdx = lineIdx < mapping.length ? mapping[lineIdx] : lineIdx
+        lineIdx++
+        const b = Math.min(bucketCount - 1, Math.floor(sourceIdx / bucketRange))
+        bucketBuffers[b].push(`${sourceIdx}\t${line}`)
+        if (bucketBuffers[b].length >= BUCKET_FLUSH_THRESHOLD) {
+          await flushBucket(b)
         }
       }
+    }, offset => {
+      checkAborted()
       onProgress?.({ fraction: Math.min(0.5, (offset / fileSize) * 0.5) })
-    }
-    if (leftover.trim() && headerParsed) {
-      const sourceIdx = lineIdx < mapping.length ? mapping[lineIdx] : lineIdx
-      lineIdx++
-      const b = Math.min(bucketCount - 1, Math.floor(sourceIdx / bucketRange))
-      bucketBuffers[b].push(`${sourceIdx}\t${leftover.trim()}`)
-    }
+    })
     for (let b = 0; b < bucketCount; b++) {
       // eslint-disable-next-line no-await-in-loop
       await flushBucket(b)
@@ -205,17 +156,9 @@ export async function restoreSourceOrder(
       if (bSize === 0) {
         onProgress?.({ fraction: 0.5 + ((b + 1) / bucketCount) * 0.5 })
       } else {
-        // Read the whole bucket file (kept small by TARGET_ROWS_PER_BUCKET)
-        let bText = ''
-        let bOff = 0
-        while (bOff < bSize) {
-          const chunkN = Math.min(CHUNK_READ_SIZE, bSize - bOff)
-          // eslint-disable-next-line no-await-in-loop
-          const { text, bytesRead } = await readFileChunk(bucketPaths[b], bOff, chunkN)
-          if (bytesRead === 0) break
-          bOff += bytesRead
-          bText += text
-        }
+        checkAborted()
+        // eslint-disable-next-line no-await-in-loop
+        const bText = await readFileText(bucketPaths[b], bSize)
 
         const [bLines, bRemainder] = splitCsvLines(bText)
         const allLines = bRemainder.trim() ? [...bLines, bRemainder.trim()] : bLines

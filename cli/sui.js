@@ -14,6 +14,27 @@ const BigNumber = require('bignumber.js')
 const { parseAmount, logReceipt } = require('./utils')
 const { validateCustomRpcUrl } = require('./rpc')
 
+const SUI_ADDRESS_LENGTH = 32 // 32 bytes = 64 hex chars
+
+/**
+ * Validate a Sui address: must be 0x-prefixed, exactly 64 hex chars (32 bytes).
+ * Rejects short addresses to prevent the SDK from silently zero-padding.
+ */
+function validateSuiAddress(address) {
+  if (typeof address !== 'string' || !address.startsWith('0x')) {
+    throw new Error(`Invalid Sui address: must start with 0x. Got: ${address}`)
+  }
+  const hex = address.slice(2)
+  if (hex.length !== SUI_ADDRESS_LENGTH * 2) {
+    throw new Error(
+      `Invalid Sui address: expected ${SUI_ADDRESS_LENGTH * 2} hex chars after 0x, got ${hex.length}. Address: ${address}`
+    )
+  }
+  if (!/^[0-9a-fA-F]+$/.test(hex)) {
+    throw new Error(`Invalid Sui address: contains non-hex characters. Address: ${address}`)
+  }
+}
+
 class MPCSigner extends Signer {
   constructor(privateKey) {
     super()
@@ -44,6 +65,7 @@ const getClient = (network, rpc) => {
 
 const transfer = async config => {
   const { amount, receiver, network, privateKey, rpc } = config
+  validateSuiAddress(receiver)
   const client = getClient(network, rpc)
   const signer = new MPCSigner(privateKey)
   const tx = new Transaction()
@@ -61,6 +83,7 @@ const transfer = async config => {
 
 const ftTransfer = async config => {
   const { amount, receiver, network, privateKey, ftoken, rpc } = config
+  validateSuiAddress(receiver)
 
   const client = getClient(network, rpc)
   const signer = new MPCSigner(privateKey)

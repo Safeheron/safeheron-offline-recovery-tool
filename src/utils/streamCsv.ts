@@ -1,24 +1,22 @@
 import {
+  CSV_REQUIRED_FIELD,
   LIQUID_CHAIN,
   LIQUID_TEST_CHAIN,
 } from './const'
 import { MissRequiredFieldError, MissDataError, UnsupportBlockChainError } from './csv'
+import { RecoverHDKeyError, NetworkDetectedError } from './errors'
 import { ValidateAddressError, DerivedCSVRow } from './mpc'
 import {
   getFileSize,
-  readFileChunk,
   writeFileChunk,
-  CHUNK_READ_SIZE,
+  streamFileLines,
 } from './tauriFileIO'
-import { parseCsvHeader, escapeCsvField, splitCsvFields, splitCsvLines } from './csvLineParser'
+import { parseCsvHeader, escapeCsvField, splitCsvFields } from './csvLineParser'
 import type { CsvHeaderInfo } from './csvLineParser'
 
 // --- Streaming pipeline orchestrator ---
 
-/** Thrown when a worker fails to build the HDKey during init — i.e. the user
- *  provided invalid mnemonics/chaincode. Used by the UI layer to distinguish
- *  "bad credentials" from "bad data file" without string-matching on messages. */
-export class RecoverHDKeyError extends Error {}
+export { RecoverHDKeyError, NetworkDetectedError }
 
 const BATCH_SIZE = 2000
 
@@ -32,9 +30,7 @@ export interface StreamResult {
   totalRows: number
 }
 
-const ED25519_CHAIN_SET = new Set([
-  'ton', 'ton_testnet', 'ton testnet', 'near', 'aptos', 'sui', 'solana',
-])
+const ED25519_ALGO = 'ed25519'
 
 function isLiquidChain(chainLower: string): boolean {
   return chainLower === LIQUID_CHAIN || chainLower === LIQUID_TEST_CHAIN
@@ -97,6 +93,7 @@ function batchToCsvChunk(rows: DerivedCSVRow[], columns: string[]): string {
 export interface StreamCsvOptions {
   /** Source is JSON backup — Address field may be empty */
   skipAddressCheck?: boolean
+  signal?: AbortSignal
 }
 
 export async function streamCsvProcess(
@@ -113,8 +110,6 @@ export async function streamCsvProcess(
 
   // === Phase 1: Parse — sequential batching, preserve source order ===
   const tParse = performance.now()
-  let offset = 0
-  let leftover = ''
   let headerLine = ''
   let totalRowsParsed = 0
   let hasLiquid = false
@@ -127,69 +122,47 @@ export async function streamCsvProcess(
   let currentLines: string[] = []
   let currentBatchHasLiquid = false
 
-  while (offset < fileSize) {
-    const chunkSize = Math.min(CHUNK_READ_SIZE, fileSize - offset)
-    // eslint-disable-next-line no-await-in-loop
-    const { text: chunk, bytesRead } = await readFileChunk(filePath, offset, chunkSize)
-    if (bytesRead === 0) break // safety: prevent infinite loop on unreadable bytes
-    offset += bytesRead
+  const processLine = (line: string) => {
+    if (!headerParsed) {
+      headerLine = line
+      header = parseCsvHeader(line)
+      headerParsed = true
+    } else {
+      const fields = splitCsvFields(line)
+      const blockchain = fields[header!.blockchainIdx]?.trim() || ''
+      const chainLower = blockchain.toLowerCase()
+      const algo = fields[header!.algoIdx]?.trim() || ''
 
-    const combined = leftover + chunk
-    const [completeLines, remainder] = splitCsvLines(combined)
-    leftover = remainder
+      if (algo.toLowerCase() === ED25519_ALGO) {
+        ed25519ChainNames.add(blockchain)
+      }
+      if (isLiquidChain(chainLower)) {
+        hasLiquid = true
+        currentBatchHasLiquid = true
+      }
 
-    for (const line of completeLines) {
-      if (!line) {
-        // skip empty lines
-      } else if (!headerParsed) {
-        headerLine = line
-        header = parseCsvHeader(line)
-        headerParsed = true
-      } else {
-        const fields = splitCsvFields(line)
-        const blockchain = fields[header!.blockchainIdx]?.trim() || ''
-        const chainLower = blockchain.toLowerCase()
+      currentLines.push(line)
+      totalRowsParsed++
 
-        if (ED25519_CHAIN_SET.has(chainLower)) {
-          ed25519ChainNames.add(blockchain)
-        }
-        if (isLiquidChain(chainLower)) {
-          hasLiquid = true
-          currentBatchHasLiquid = true
-        }
-
-        currentLines.push(line)
-        totalRowsParsed++
-
-        if (currentLines.length >= BATCH_SIZE) {
-          batchQueue.push({ lines: currentLines, rowCount: currentLines.length, hasLiquid: currentBatchHasLiquid })
-          currentLines = []
-          currentBatchHasLiquid = false
-        }
+      if (currentLines.length >= BATCH_SIZE) {
+        batchQueue.push({ lines: currentLines, rowCount: currentLines.length, hasLiquid: currentBatchHasLiquid })
+        currentLines = []
+        currentBatchHasLiquid = false
       }
     }
+  }
 
+  await streamFileLines(filePath, fileSize, processLine, offset => {
     const parsePercent = Math.min(10, Math.round((offset / fileSize) * 10))
     onProgress({ phase: 'parse', percent: parsePercent })
-  }
+  })
 
-  // Handle leftover (last line without trailing newline)
-  if (leftover.trim() && headerParsed) {
-    const line = leftover.replace(/\r$/, '').trim()
-    const fields = splitCsvFields(line)
-    const blockchain = fields[header!.blockchainIdx]?.trim() || ''
-    const chainLower = blockchain.toLowerCase()
-    if (ED25519_CHAIN_SET.has(chainLower)) ed25519ChainNames.add(blockchain)
-    if (isLiquidChain(chainLower)) { hasLiquid = true; currentBatchHasLiquid = true }
-    currentLines.push(line)
-    totalRowsParsed++
-  }
   if (currentLines.length > 0) {
     batchQueue.push({ lines: currentLines, rowCount: currentLines.length, hasLiquid: currentBatchHasLiquid })
     currentLines = []
   }
 
-  if (!headerParsed) throw new MissRequiredFieldError('HD Path')
+  if (!headerParsed) throw new MissRequiredFieldError(CSV_REQUIRED_FIELD)
   if (totalRowsParsed === 0) throw new MissDataError()
 
   const totalBatches = batchQueue.length
@@ -375,6 +348,21 @@ export async function streamCsvProcess(
 
     workerSlots.forEach((w, i) => attachHandler(w, i))
     workerSlots.forEach((w, i) => dispatchNext(w, i))
+
+    // Abort support: immediately terminate all workers when signal fires
+    if (options?.signal) {
+      const onAbort = () => {
+        if (rejected) return
+        rejected = true
+        terminateAll()
+        reject(new NetworkDetectedError())
+      }
+      if (options.signal.aborted) {
+        onAbort()
+      } else {
+        options.signal.addEventListener('abort', onAbort, { once: true })
+      }
+    }
   })
 
   const tEnd = performance.now()
