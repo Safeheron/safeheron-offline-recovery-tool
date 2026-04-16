@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@jest/globals'
 
-import { recoverHDKeyFromMnemonics, recoverDerivedCSV, createDeriveCache, ValidateAddressError } from '../utils/mpc'
+import { recoverHDKeyFromMnemonics, recoverDerivedCSV, createDeriveCache, ValidateAddressError, LRUMap } from '../utils/mpc'
 import type { RawCSVRow } from '../utils/mpc'
 import { padToLength } from '../utils/common'
 
@@ -190,5 +190,69 @@ describe('recoverDerivedCSV', () => {
       Algorithm: 'secp256k1',
     }]
     expect(() => recoverDerivedCSV(rows, hdKey)).toThrow(ValidateAddressError)
+  })
+})
+
+describe('LRUMap', () => {
+  test('is instanceof Map', () => {
+    const lru = new LRUMap(3)
+    expect(lru).toBeInstanceOf(Map)
+  })
+
+  test('get and set work like Map', () => {
+    const lru = new LRUMap<string, number>(10)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    expect(lru.get('a')).toBe(1)
+    expect(lru.get('b')).toBe(2)
+    expect(lru.get('c')).toBeUndefined()
+    expect(lru.size).toBe(2)
+  })
+
+  test('evicts oldest entry when over capacity', () => {
+    const lru = new LRUMap<string, number>(3)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    lru.set('c', 3)
+    // Full — next insert evicts oldest ('a')
+    lru.set('d', 4)
+    expect(lru.size).toBe(3)
+    expect(lru.get('a')).toBeUndefined()
+    expect(lru.get('b')).toBe(2)
+    expect(lru.get('d')).toBe(4)
+  })
+
+  test('get refreshes recency so entry is not evicted', () => {
+    const lru = new LRUMap<string, number>(3)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    lru.set('c', 3)
+    // Touch 'a' — now 'b' is oldest
+    lru.get('a')
+    lru.set('d', 4)
+    expect(lru.get('a')).toBe(1) // survived
+    expect(lru.get('b')).toBeUndefined() // evicted
+  })
+
+  test('set on existing key updates value and refreshes recency', () => {
+    const lru = new LRUMap<string, number>(3)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    lru.set('c', 3)
+    // Update 'a' — now 'b' is oldest
+    lru.set('a', 100)
+    lru.set('d', 4)
+    expect(lru.get('a')).toBe(100)
+    expect(lru.get('b')).toBeUndefined()
+    expect(lru.size).toBe(3)
+  })
+
+  test('capacity 1 always holds only the last entry', () => {
+    const lru = new LRUMap<string, number>(1)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    expect(lru.size).toBe(1)
+    expect(lru.get('a')).toBeUndefined()
+    expect(lru.get('b')).toBe(2)
   })
 })

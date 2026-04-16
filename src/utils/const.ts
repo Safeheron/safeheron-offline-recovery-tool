@@ -1,4 +1,4 @@
-export const CSV_REQUIRED_FIELD = 'HD Path'
+export const CSV_FIELD_HD_PATH = 'HD Path'
 export const CSV_FIELD_BLOCKCHAIN = 'Blockchain Type'
 export const CSV_FIELD_NETWORK = 'Network'
 export const CSV_FIELD_ADDRESS = 'Address'

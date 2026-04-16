@@ -19,21 +19,29 @@ import {
   TON_TEST_CHAIN_ALIAS,
 } from '@/utils/const'
 import { streamCsvProcess, StreamProgress, RecoverHDKeyError, NetworkDetectedError } from '@/utils/streamCsv'
-import { getFileSize, getTempPath, copyFile, registerSelectedPath, removeTempFile } from '@/utils/tauriFileIO'
+import { getFileSize, getTempPath, copyFile, registerSelectedPath, removeTempFile, readFileText } from '@/utils/tauriFileIO'
+import { expandSortedJsonToTempCsv } from '@/utils/jsonBackup'
 import { restoreSourceOrder } from '@/utils/restoreSourceOrder'
 
 // Files under this size use a single worker (worker init overhead ~200ms
 // vs near-zero derive time for small files makes multi-worker pointless).
 const SINGLE_WORKER_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 
+// Progress phase splits.
+// JSON: 0-10 expand, 10-85 derive, 85-99 restore, 100 done.
+// CSV: 0-90 derive, 90-99 restore, 100 done.
+const JSON_EXPAND_MAX = 10
+const JSON_DERIVE_MAX = 85
+const JSON_RESTORE_MAX = 99
+const CSV_DERIVE_MAX = 90
+const CSV_RESTORE_MAX = 99
+
 export interface RecoveryItemModel {
   chainCode: string
   mnemonicList: string[]
-  /** Temp CSV path — source for streamCsvProcess */
-  inputCsvPath: string
+  /** Temp copy of the user's source file (JSON or CSV) */
+  sourcePath: string
   isJsonSource: boolean
-  /** Sidecar mapping file — maps sorted-derive-order line N to original sourceIdx */
-  jsonMappingPath?: string
   originalFile?: { name: string; path: string }
 }
 
@@ -52,11 +60,16 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
   const [finalTempPath, setFinalTempPath] = useState('')
   const finalTempPathRef = useRef('')
   const [ed25519Chains, setEd25519Chains] = useState<string[]>([])
+  // Ref so the unmount cleanup can see the latest expanded-csv path
+  // (React state updates inside exportFile wouldn't be visible in a stale closure).
+  const expandedCsvPathRef = useRef('')
+
   useEffect(() => {
     exportPrivateKey()
     return () => {
       if (finalTempPathRef.current) removeTempFile(finalTempPathRef.current).catch(console.error)
-      if (data.inputCsvPath) removeTempFile(data.inputCsvPath).catch(console.error)
+      if (expandedCsvPathRef.current) removeTempFile(expandedCsvPathRef.current).catch(console.error)
+      if (data.sourcePath) removeTempFile(data.sourcePath).catch(console.error)
     }
   }, [])
 
@@ -78,32 +91,73 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
     const controller = new AbortController()
     const onOnline = () => controller.abort()
     window.addEventListener('online', onOnline)
+
     try {
+      // === Phase 1: JSON expand (0-10%), skipped for CSV sources ===
+      // JSON: expanded CSV has inline `<sourceIdx>\t` prefix per data row.
+      let inputCsvPath = data.sourcePath
+      if (data.isJsonSource) {
+        // Use custom IPC readFileText (not Tauri's fs.readTextFile) because
+        // the temp path isn't in Tauri's allowlist scope.
+        const sourceSize = await getFileSize(data.sourcePath)
+        const jsonText = await readFileText(data.sourcePath, sourceSize)
+        const expanded = await expandSortedJsonToTempCsv(jsonText, (emitted, total) => {
+          if (total > 0) {
+            setProgress(Math.min(JSON_EXPAND_MAX, Math.round((emitted / total) * JSON_EXPAND_MAX)))
+          }
+        })
+        expandedCsvPathRef.current = expanded.tempPath
+        inputCsvPath = expanded.tempPath
+
+        // Free the original JSON copy — it's no longer needed once expanded.
+        removeTempFile(data.sourcePath).catch(console.error)
+      }
+
+      // === Phase 2: derive (writes out-of-order, each row tagged with sourceIdx) ===
       derivedPath = await getTempPath()
-      finalPath = data.isJsonSource ? await getTempPath() : derivedPath
+      // Final output is always a separate temp — restore runs for both CSV and JSON
+      // to reassemble the out-of-order derive output.
+      finalPath = await getTempPath()
       finalTempPathRef.current = finalPath
 
-      const fileSize = await getFileSize(data.inputCsvPath)
+      const fileSize = await getFileSize(inputCsvPath)
       const workerCount = fileSize < SINGLE_WORKER_FILE_SIZE ? 1 : undefined
 
+      // Progress scaling:
+      //   JSON: derive occupies [JSON_EXPAND_MAX, JSON_DERIVE_MAX]
+      //   CSV:  derive occupies [0, CSV_DERIVE_MAX]
       const result = await streamCsvProcess(
-        data.inputCsvPath,
+        inputCsvPath,
         derivedPath,
         data.mnemonicList,
         data.chainCode,
         (p: StreamProgress) => {
-          const capped = data.isJsonSource ? Math.min(p.percent, 95) : p.percent
-          setProgress(capped)
+          if (data.isJsonSource) {
+            const range = JSON_DERIVE_MAX - JSON_EXPAND_MAX
+            setProgress(JSON_EXPAND_MAX + Math.round((p.percent / 100) * range))
+          } else {
+            setProgress(Math.round((p.percent / 100) * CSV_DERIVE_MAX))
+          }
         },
-        { skipAddressCheck: data.isJsonSource, signal: controller.signal, workerCount }
+        {
+          skipAddressCheck: data.isJsonSource,
+          signal: controller.signal,
+          workerCount,
+          inputHasSourceIdxPrefix: data.isJsonSource,
+        }
       )
 
-      if (data.isJsonSource && data.jsonMappingPath) {
-        await restoreSourceOrder(derivedPath, finalPath, result.totalRows, data.jsonMappingPath, rp => {
-          setProgress(95 + Math.round(rp.fraction * 5))
-        }, controller.signal)
-        removeTempFile(derivedPath).catch(console.error)
-        removeTempFile(data.jsonMappingPath).catch(console.error)
+      // === Phase 3: restore source order (runs for both CSV and JSON) ===
+      const restoreStart = data.isJsonSource ? JSON_DERIVE_MAX : CSV_DERIVE_MAX
+      const restoreEnd = data.isJsonSource ? JSON_RESTORE_MAX : CSV_RESTORE_MAX
+      await restoreSourceOrder(derivedPath, finalPath, result.totalRows, rp => {
+        const range = restoreEnd - restoreStart
+        setProgress(restoreStart + Math.round(rp.fraction * range))
+      }, controller.signal)
+      removeTempFile(derivedPath).catch(console.error)
+      if (expandedCsvPathRef.current) {
+        removeTempFile(expandedCsvPathRef.current).catch(console.error)
+        expandedCsvPathRef.current = ''
       }
 
       setErrMsg('')
@@ -117,22 +171,19 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       setLoading(false)
     } catch (error: any) {
       if (error instanceof NetworkDetectedError) {
-        // Network detected during derive — delete ALL intermediate files (may contain private keys)
-        removeTempFile(derivedPath).catch(console.error)
+        // Network detected — delete ALL intermediate files (may contain private keys)
+        if (derivedPath) removeTempFile(derivedPath).catch(console.error)
         if (finalPath && finalPath !== derivedPath) removeTempFile(finalPath).catch(console.error)
-        if (data.jsonMappingPath) removeTempFile(data.jsonMappingPath).catch(console.error)
-        if (data.inputCsvPath) removeTempFile(data.inputCsvPath).catch(console.error)
+        if (expandedCsvPathRef.current) removeTempFile(expandedCsvPathRef.current).catch(console.error)
+        if (data.sourcePath) removeTempFile(data.sourcePath).catch(console.error)
         finalTempPathRef.current = ''
+        expandedCsvPathRef.current = ''
         setLoading(false)
         prev()
         return
       }
-      // Non-abort errors: existing handling
-      if (data.isJsonSource) {
-        removeTempFile(derivedPath).catch(console.error)
-        if (finalPath !== derivedPath) removeTempFile(finalPath).catch(console.error)
-        if (data.jsonMappingPath) removeTempFile(data.jsonMappingPath).catch(console.error)
-      }
+      // Non-abort errors: clean up intermediates the unmount hook wouldn't touch.
+      if (derivedPath) removeTempFile(derivedPath).catch(console.error)
       console.error('[RECOVER EXPORT FILE ERROR]: ', error)
       if (error instanceof RecoverHDKeyError) {
         const k =
@@ -164,8 +215,8 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         // Clean up temp files
         removeTempFile(finalTempPath).catch(console.error)
         finalTempPathRef.current = ''
-        if (data.inputCsvPath) {
-          removeTempFile(data.inputCsvPath).catch(console.error)
+        if (data.sourcePath) {
+          removeTempFile(data.sourcePath).catch(console.error)
         }
       }
       next()

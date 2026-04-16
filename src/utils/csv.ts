@@ -4,7 +4,7 @@ import { parse } from 'csv-parse/sync'
 import { stringify } from 'csv-stringify/sync'
 
 import {
-  CSV_REQUIRED_FIELD,
+  CSV_FIELD_HD_PATH,
   CSV_FIELD_BLOCKCHAIN,
   CSV_FIELD_NETWORK,
   CSV_FIELD_ADDRESS,
@@ -12,7 +12,7 @@ import {
 } from './const'
 
 const requiredFields = [
-  CSV_REQUIRED_FIELD,
+  CSV_FIELD_HD_PATH,
   CSV_FIELD_BLOCKCHAIN,
   CSV_FIELD_NETWORK,
   CSV_FIELD_ADDRESS,

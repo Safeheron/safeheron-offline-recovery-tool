@@ -1,5 +1,5 @@
 import {
-  CSV_REQUIRED_FIELD,
+  CSV_FIELD_HD_PATH,
   CSV_FIELD_BLOCKCHAIN,
   CSV_FIELD_NETWORK,
   CSV_FIELD_ADDRESS,
@@ -22,7 +22,7 @@ export interface CsvHeaderInfo {
 }
 
 const REQUIRED_COLUMNS = [
-  CSV_REQUIRED_FIELD,
+  CSV_FIELD_HD_PATH,
   CSV_FIELD_BLOCKCHAIN,
   CSV_FIELD_NETWORK,
   CSV_FIELD_ADDRESS,
@@ -81,7 +81,7 @@ export function parseCsvHeader(headerLine: string): CsvHeaderInfo {
 
   return {
     columns,
-    hdPathIdx: columns.indexOf(CSV_REQUIRED_FIELD),
+    hdPathIdx: columns.indexOf(CSV_FIELD_HD_PATH),
     blockchainIdx: columns.indexOf(CSV_FIELD_BLOCKCHAIN),
     networkIdx: columns.indexOf(CSV_FIELD_NETWORK),
     addressIdx: columns.indexOf(CSV_FIELD_ADDRESS),
@@ -97,6 +97,14 @@ export interface ParseCsvLineOptions {
 
 export function parseCsvLine(line: string, header: CsvHeaderInfo, options?: ParseCsvLineOptions): RawCSVRow {
   const values = splitCsvFields(line)
+
+  // Reject rows shorter than the header — missing columns would silently
+  // become empty strings, potentially causing wrong key derivation.
+  if (values.length < header.columns.length) {
+    throw new MissRequiredFieldError(
+      `row has ${values.length} fields, expected ${header.columns.length}`
+    )
+  }
 
   // Validate required fields
   const skipFields = options?.skipAddressCheck ? [CSV_FIELD_ADDRESS] : []

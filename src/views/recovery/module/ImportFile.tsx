@@ -9,14 +9,13 @@ import {
   MissRequiredFieldError,
   UnsupportBlockChainError,
 } from '@/utils/csv'
-import { expandSortedJsonToTempCsv } from '@/utils/jsonBackup'
 import { useTranslation } from '@/i18n'
 import { readFileChunk, getTempPath, copyFile, getFileSize, removeTempFile } from '@/utils/tauriFileIO'
 import { parseCsvHeader, parseCsvLine, splitCsvLines } from '@/utils/csvLineParser'
 
 interface Props {
   next: () => void
-  onComplete: (tempCsvPath: string, isJsonSource: boolean, jsonMappingPath?: string, originalFile?: { name: string; path: string }) => void
+  onComplete: (sourcePath: string, isJsonSource: boolean, originalFile?: { name: string; path: string }) => void
   originalFile?: { name: string; path: string }
 }
 const ImportFile: FC<Props> = ({ next, onComplete, originalFile }) => {
@@ -147,10 +146,13 @@ const ImportFile: FC<Props> = ({ next, onComplete, originalFile }) => {
     if (isJsonSource) {
       setImporting(true)
       try {
-        const { tempPath, mappingPath } = await expandSortedJsonToTempCsv(file.text ?? '')
-        // Clear ref BEFORE onComplete+next — ownership transfers to ExportKey.
+        // Copy source JSON to a temp path so the heavy expand step (run during
+        // the ExportKey progress phase) is not affected if the user deletes the
+        // original file right after clicking next.
+        const tempPath = await getTempPath()
+        await copyFile(originalDiskPathRef.current, tempPath)
         tempPathsRef.current = []
-        onComplete(tempPath, true, mappingPath, origFile)
+        onComplete(tempPath, true, origFile)
       } catch (err) {
         console.error('[RECOVER IMPORT JSON ERROR]:', err)
         setErrMsg(t('Recovery.ImportFile.error.default'))
@@ -160,7 +162,7 @@ const ImportFile: FC<Props> = ({ next, onComplete, originalFile }) => {
     } else {
       // CSV: temp file already created during selection
       tempPathsRef.current = []
-      onComplete(file.path, false, undefined, origFile)
+      onComplete(file.path, false, origFile)
     }
     next()
   }

@@ -5,11 +5,10 @@ import {
   createDeriveCache,
   DeriveCache,
   RawCSVRow,
-  DerivedCSVRow,
   ValidateAddressError,
 } from '@/utils/mpc'
 import { sanitizeCsvValue, MissRequiredFieldError, UnsupportBlockChainError } from '@/utils/csv'
-import { parseCsvHeader, parseCsvLine } from '@/utils/csvLineParser'
+import { parseCsvHeader, parseCsvLine, escapeCsvField } from '@/utils/csvLineParser'
 import { LiquidSDK } from '@/wasm/liquidSDK'
 
 interface InitMessage {
@@ -25,6 +24,12 @@ interface DeriveMessage {
   headerLine: string
   rawLines: string[]
   rowCount: number
+  /**
+   * Per-row sourceIdx (parallel to rawLines). The worker emits each output row
+   * prefixed with `<sourceIdx>\t` so downstream restoreSourceOrder can
+   * reorder without a separate mapping file.
+   */
+  sourceIdxs: number[]
   skipAddressCheck: boolean
 }
 
@@ -72,15 +77,27 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
         .map(line => parseCsvLine(line, header, parseOptions))
 
       const derived = recoverDerivedCSV(rows, hdKey, deriveCache)
-      const sanitized = derived.map(row =>
-        Object.fromEntries(
-          Object.entries(row).map(([k, v]) => [k, sanitizeCsvValue(v)])
-        )
-      ) as unknown as DerivedCSVRow[]
+
+      // Serialize directly to a CSV chunk string with "<sourceIdx>\t" prefix
+      // per row. Building the string here keeps large object arrays off the
+      // wire and off the main thread's heap.
+      const columns = Object.keys(derived[0])
+      const lines: string[] = new Array(derived.length)
+      for (let i = 0; i < derived.length; i++) {
+        const row = derived[i] as unknown as Record<string, string>
+        const fields = columns
+          .map(col => escapeCsvField(String(sanitizeCsvValue(row[col] ?? ''))))
+          .join(',')
+        lines[i] = `${msg.sourceIdxs[i]}\t${fields}`
+      }
+      const chunkContent = `${lines.join('\n')}\n`
+
       self.postMessage({
         type: 'derive-done',
         batchIndex: msg.batchIndex,
-        rows: sanitized,
+        chunkContent,
+        rowCount: derived.length,
+        columns,
       })
     } catch (err: any) {
       let errorName = 'Error'

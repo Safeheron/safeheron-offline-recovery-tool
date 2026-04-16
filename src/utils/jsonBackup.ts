@@ -10,7 +10,7 @@ import {
   CSV_FIELD_BLOCKCHAIN,
   CSV_FIELD_NETWORK,
   CSV_FIELD_ADDRESS,
-  CSV_REQUIRED_FIELD,
+  CSV_FIELD_HD_PATH,
   CSV_FIELD_ALGO,
 } from './const'
 
@@ -121,6 +121,11 @@ export function parseItemDescriptors(jsonText: string): { items: ItemDescriptor[
     algorithm: algorithmDict,
   } = metadata
 
+  // Expected token count per item, derived from the tp template.
+  // e.g. "{blockchain},{network},{type},{at},{path2},{path3},{path4},{path5}" → 8
+  const tp = metadata.tp as string | undefined
+  const expectedTokenCount = tp ? tp.split(',').length : 8
+
   const items: ItemDescriptor[] = []
 
   for (const walletEntry of data as Record<string, { item: string[] }>[]) {
@@ -129,21 +134,39 @@ export function parseItemDescriptors(jsonText: string): { items: ItemDescriptor[
       const algoName = algorithmDict[algoIdx] as string
       const { item } = walletEntry[algoIdxStr]
 
+      if (!algoName) throw new InvalidFormatError()
+
       for (const itemStr of item) {
         const tokens = tokenizeItemString(itemStr)
+        if (tokens.length < expectedTokenCount) throw new InvalidFormatError()
+
         const blockchainIdx = parseInt(tokens[0], 10)
         const networkIdx = parseInt(tokens[1], 10)
         const atIdx = parseInt(tokens[3], 10)
         const path2 = parseInt(tokens[4], 10)
-        const path3Ranges: number[][] = JSON.parse(tokens[5])
         const path4 = parseInt(tokens[6], 10)
-        const path5Ranges: number[][] = JSON.parse(tokens[7])
+
+        if (Number.isNaN(path2) || Number.isNaN(path4)) throw new InvalidFormatError()
+
+        const blockchain = blockchainDict[blockchainIdx] as string | undefined
+        const network = networkDict[networkIdx] as string | undefined
+        const addrType = (metadata.at as string[])?.[atIdx]
+        if (!blockchain || !network || !addrType) throw new InvalidFormatError()
+
+        let path3Ranges: number[][]
+        let path5Ranges: number[][]
+        try {
+          path3Ranges = JSON.parse(tokens[5])
+          path5Ranges = JSON.parse(tokens[7])
+        } catch {
+          throw new InvalidFormatError()
+        }
 
         items.push({
           algoName,
-          blockchain: blockchainDict[blockchainIdx] as string,
-          network: networkDict[networkIdx] as string,
-          addrType: (metadata.at as string[])[atIdx],
+          blockchain,
+          network,
+          addrType,
           path2,
           path3Ranges,
           path4,
@@ -168,86 +191,195 @@ const CSV_COLUMNS = [
   CSV_FIELD_NETWORK,
   CSV_FIELD_ADDRESS,
   CSV_FIELD_ADDR_TYPE,
-  CSV_REQUIRED_FIELD,
+  CSV_FIELD_HD_PATH,
   CSV_FIELD_ALGO,
 ]
 
 /**
- * Expand JSON backup into a sorted temp CSV + sidecar mapping file.
- *
- * Approach: generate all rows as lightweight { csvLine, sourceIdx, sortKey }
- * structs (~200 bytes/row), sort in memory, then write sequentially.
- * Supports ~8M rows within 2GB heap.
+ * Binary min-heap. Used by expandSortedJsonToTempCsv for k-way merge.
  */
-export async function expandSortedJsonToTempCsv(
-  jsonText: string,
-): Promise<{ tempPath: string; mappingPath: string; totalRows: number }> {
-  const { items } = parseItemDescriptors(jsonText)
+class MinHeap<T> {
+  private data: T[] = []
 
-  // Phase 1: expand all items into lightweight row structs.
-  // Yield to the event loop every YIELD_INTERVAL rows so the UI stays responsive.
-  const YIELD_INTERVAL = 50000
-  const yieldTick = () => new Promise<void>(r => { setTimeout(r, 0) })
+  private cmp: (a: T, b: T) => number
 
-  // Initial yield so caller's state updates (e.g. "importing..." spinner) render first.
-  await yieldTick()
+  constructor(cmp: (a: T, b: T) => number) {
+    this.cmp = cmp
+  }
 
-  const rows: Array<{ csvLine: string; sourceIdx: number; sortKey: string }> = []
-  let sourceIdx = 0
+  get size(): number { return this.data.length }
 
-  for (const item of items) {
-    const accountIndices = expandRanges(item.path3Ranges)
-    const addressIndices = expandRanges(item.path5Ranges)
+  push(v: T): void {
+    this.data.push(v)
+    this.bubbleUp(this.data.length - 1)
+  }
 
-    for (const accountIdx of accountIndices) {
-      const parentPath = `m/44/${item.path2}/${accountIdx}/${item.path4}`
-      for (const addressIdx of addressIndices) {
-        const hdPath = `${parentPath}/${addressIdx}`
-        const fields = [
-          item.blockchain,
-          item.network,
-          '',
-          item.addrType,
-          hdPath,
-          item.algoName,
-        ]
-        const csvLine = fields.map(f => escapeCsvField(String(sanitizeCsvValue(f)))).join(',')
-        rows.push({
-          csvLine,
-          sourceIdx,
-          sortKey: `${item.algoName}\x00${parentPath}\x00${String(addressIdx).padStart(10, '0')}`,
-        })
-        sourceIdx++
-        if (sourceIdx % YIELD_INTERVAL === 0) {
-          // eslint-disable-next-line no-await-in-loop
-          await yieldTick()
-        }
-      }
+  pop(): T | undefined {
+    if (this.data.length === 0) return undefined
+    const top = this.data[0]
+    const last = this.data.pop() as T
+    if (this.data.length > 0) {
+      this.data[0] = last
+      this.bubbleDown(0)
+    }
+    return top
+  }
+
+  private bubbleUp(startIdx: number): void {
+    let i = startIdx
+    while (i > 0) {
+      const parent = (i - 1) >> 1
+      if (this.cmp(this.data[i], this.data[parent]) < 0) {
+        const tmp = this.data[i]
+        this.data[i] = this.data[parent]
+        this.data[parent] = tmp
+        i = parent
+      } else break
     }
   }
 
-  // Yield before sort (sort is synchronous, ~1s, unavoidable single block)
+  private bubbleDown(startIdx: number): void {
+    let i = startIdx
+    const n = this.data.length
+    let moving = true
+    while (moving) {
+      const l = 2 * i + 1
+      const r = 2 * i + 2
+      let smallest = i
+      if (l < n && this.cmp(this.data[l], this.data[smallest]) < 0) smallest = l
+      if (r < n && this.cmp(this.data[r], this.data[smallest]) < 0) smallest = r
+      if (smallest === i) {
+        moving = false
+      } else {
+        const tmp = this.data[i]
+        this.data[i] = this.data[smallest]
+        this.data[smallest] = tmp
+        i = smallest
+      }
+    }
+  }
+}
+
+type ExpandedRow = { csvLine: string; sourceIdx: number; sortKey: string }
+
+/**
+ * Lazily emit rows for one item in sortKey-ascending order.
+ * Within a single item: (account asc, addr asc); sortKey pads account so string
+ * comparison matches numeric comparison, keeping the stream monotonic for k-way merge.
+ */
+function* itemRowStream(item: ItemDescriptor, startSourceIdx: number): Generator<ExpandedRow> {
+  const accountIndices = expandRanges(item.path3Ranges)
+  const addressIndices = expandRanges(item.path5Ranges)
+  let sourceIdx = startSourceIdx
+  for (const accountIdx of accountIndices) {
+    const parentPath = `m/44/${item.path2}/${accountIdx}/${item.path4}`
+    const paddedAccount = String(accountIdx).padStart(10, '0')
+    const paddedParent = `m/44/${item.path2}/${paddedAccount}/${item.path4}`
+    for (const addressIdx of addressIndices) {
+      const hdPath = `${parentPath}/${addressIdx}`
+      const fields = [
+        item.blockchain,
+        item.network,
+        '',
+        item.addrType,
+        hdPath,
+        item.algoName,
+      ]
+      const csvLine = fields.map(f => escapeCsvField(String(sanitizeCsvValue(f)))).join(',')
+      yield {
+        csvLine,
+        sourceIdx: sourceIdx++,
+        sortKey: `${item.algoName}\x00${paddedParent}\x00${String(addressIdx).padStart(10, '0')}`,
+      }
+    }
+  }
+}
+
+/**
+ * Expand JSON backup into a sorted temp CSV.
+ *
+ * Output format (INTERNAL — not a valid CSV for external consumers):
+ *   - First line: plain CSV header (no prefix).
+ *   - Data lines: `<sourceIdx>\t<csvFields>` where sourceIdx is the row's
+ *     position in the original (user-visible) expansion order. The tab prefix
+ *     lets the downstream pipeline carry sourceIdx through derive and restore
+ *     the original order at the end without a separate mapping sidecar file.
+ *
+ * Approach: each item produces its rows in order via a generator; a min-heap
+ * does k-way merge across all items, streaming the merged output to disk
+ * without ever materializing the full row set. Peak memory: heap (k items) +
+ * one write batch (5000 rows), typically under 1 MB regardless of input size.
+ *
+ * Emits progress via `onProgress(emitted, total)` on every flush boundary
+ * (every ~5000 rows).
+ */
+export async function expandSortedJsonToTempCsv(
+  jsonText: string,
+  onProgress?: (emitted: number, total: number) => void,
+): Promise<{ tempPath: string; totalRows: number }> {
+  const { items } = parseItemDescriptors(jsonText)
+
+  // Precompute each item's starting sourceIdx (cumulative row count).
+  const itemStarts: number[] = []
+  let offset = 0
+  for (const item of items) {
+    itemStarts.push(offset)
+    offset += item.accountCount * item.addrCount
+  }
+  const totalRows = offset
+
+  // Yield so caller's UI can update before the heavy work starts.
+  const yieldTick = () => new Promise<void>(r => { setTimeout(r, 0) })
   await yieldTick()
+  onProgress?.(0, totalRows)
 
-  // Phase 2: sort by (algo, parentPath, lastIndex)
-  rows.sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-
-  // Phase 3: write sorted CSV + mapping file
-  const tempPath = await getTempPath()
-  const mappingPath = await getTempPath()
-  await writeFileChunk(tempPath, `${CSV_COLUMNS.join(',')}\n`, false)
-  await writeFileChunk(mappingPath, '', false)
-
-  const CHUNK_ROWS = 5000
-  for (let i = 0; i < rows.length; i += CHUNK_ROWS) {
-    const slice = rows.slice(i, i + CHUNK_ROWS)
-    const csvChunk = `${slice.map(r => r.csvLine).join('\n')}\n`
-    const mapChunk = `${slice.map(r => r.sourceIdx).join('\n')}\n`
-    // eslint-disable-next-line no-await-in-loop
-    await writeFileChunk(tempPath, csvChunk, true)
-    // eslint-disable-next-line no-await-in-loop
-    await writeFileChunk(mappingPath, mapChunk, true)
+  // Create lazy iterators and seed the heap with each's first row.
+  type HeapEntry = ExpandedRow & { iterIdx: number }
+  const iterators = items.map((item, i) => itemRowStream(item, itemStarts[i]))
+  const heap = new MinHeap<HeapEntry>((a, b) => {
+    if (a.sortKey < b.sortKey) return -1
+    if (a.sortKey > b.sortKey) return 1
+    return 0
+  })
+  for (let i = 0; i < iterators.length; i++) {
+    const { value, done } = iterators[i].next()
+    if (!done) heap.push({ ...value, iterIdx: i })
   }
 
-  return { tempPath, mappingPath, totalRows: rows.length }
+  // Prepare output file with header (plain, no prefix).
+  const tempPath = await getTempPath()
+  await writeFileChunk(tempPath, `${CSV_COLUMNS.join(',')}\n`, false)
+
+  // K-way merge; flush every CHUNK_ROWS rows. Each flush awaits IPC (which
+  // yields to the event loop), so no explicit yieldTick is needed here.
+  const CHUNK_ROWS = 5000
+  const outBuf: string[] = []
+  let emitted = 0
+
+  const flush = async () => {
+    if (outBuf.length === 0) return
+    const chunk = `${outBuf.join('\n')}\n`
+    await writeFileChunk(tempPath, chunk, true)
+    outBuf.length = 0
+    onProgress?.(emitted, totalRows)
+  }
+
+  while (heap.size > 0) {
+    const entry = heap.pop() as HeapEntry
+    // Inline sourceIdx as tab-prefix; downstream (streamCsvProcess) strips it.
+    outBuf.push(`${entry.sourceIdx}\t${entry.csvLine}`)
+    emitted++
+
+    const { value, done } = iterators[entry.iterIdx].next()
+    if (!done) heap.push({ ...value, iterIdx: entry.iterIdx })
+
+    if (outBuf.length >= CHUNK_ROWS) {
+      // eslint-disable-next-line no-await-in-loop
+      await flush()
+    }
+  }
+  await flush()
+  onProgress?.(totalRows, totalRows)
+
+  return { tempPath, totalRows }
 }

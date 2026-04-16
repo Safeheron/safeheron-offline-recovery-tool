@@ -20,7 +20,7 @@ const PrivateKeyRecovery = () => {
   const [data, setData] = useState<RecoveryItemModel>({
     chainCode: '',
     mnemonicList: [],
-    inputCsvPath: '',
+    sourcePath: '',
     isJsonSource: false,
   })
 
@@ -54,12 +54,11 @@ const PrivateKeyRecovery = () => {
   )
 
   const setCsvJson = useCallback(
-    (tempCsvPath: string, isJsonSource: boolean, jsonMappingPath?: string, originalFile?: { name: string; path: string }) => {
+    (sourcePath: string, isJsonSource: boolean, originalFile?: { name: string; path: string }) => {
       setData({
         ...data,
-        inputCsvPath: tempCsvPath,
+        sourcePath,
         isJsonSource,
-        jsonMappingPath,
         originalFile,
       })
     },

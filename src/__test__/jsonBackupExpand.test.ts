@@ -61,44 +61,57 @@ const BASE_JSON = JSON.stringify({
   ],
 })
 
+/**
+ * Parse a data row from the expanded CSV: `<sourceIdx>\t<csvFields>`.
+ */
+function parseDataRow(line: string): { sourceIdx: number; fields: string[] } {
+  const tabIdx = line.indexOf('\t')
+  const sourceIdx = parseInt(line.slice(0, tabIdx), 10)
+  const csvLine = line.slice(tabIdx + 1)
+  return { sourceIdx, fields: csvLine.split(',') }
+}
+
 describe('expandSortedJsonToTempCsv', () => {
   test('returns totalRows matching computeJsonRowCount', async () => {
     const result = await expandSortedJsonToTempCsv(BASE_JSON)
     expect(result.totalRows).toBe(17)
   })
 
-  test('produces CSV with header and N data rows', async () => {
+  test('produces CSV with header (no prefix) and N tab-prefixed data rows', async () => {
     const { tempPath } = await expandSortedJsonToTempCsv(BASE_JSON)
     const csv = mockTempFiles.get(tempPath)!
     const lines = csv.trim().split('\n')
-    expect(lines.length).toBe(1 + 17) // header + 17 data rows
+    expect(lines.length).toBe(1 + 17)
+    // Header: plain CSV, no tab.
     expect(lines[0]).toBe('Blockchain Type,Network,Address,Address Type,HD Path,Algorithm')
+    expect(lines[0].includes('\t')).toBe(false)
+    // Data rows: start with "<sourceIdx>\t".
+    for (let i = 1; i < lines.length; i++) {
+      expect(lines[i]).toMatch(/^\d+\t/)
+    }
   })
 
-  test('produces mapping file with one sourceIdx per data row', async () => {
-    const { mappingPath, totalRows } = await expandSortedJsonToTempCsv(BASE_JSON)
-    const mapping = mockTempFiles.get(mappingPath)!
-    const indices = mapping.trim().split('\n').map(Number)
+  test('inline sourceIdx values cover [0..totalRows-1] exactly once', async () => {
+    const { tempPath, totalRows } = await expandSortedJsonToTempCsv(BASE_JSON)
+    const dataLines = mockTempFiles.get(tempPath)!.trim().split('\n').slice(1)
+    const indices = dataLines.map(l => parseDataRow(l).sourceIdx)
     expect(indices.length).toBe(totalRows)
-    // All source indices 0..16 must appear exactly once
     expect([...indices].sort((a, b) => a - b)).toEqual(
-      Array.from({ length: 17 }, (_, i) => i)
+      Array.from({ length: totalRows }, (_, i) => i)
     )
   })
 
   test('rows are sorted by (algo, parentPath, lastIndex)', async () => {
     const { tempPath } = await expandSortedJsonToTempCsv(BASE_JSON)
-    const csv = mockTempFiles.get(tempPath)!
-    const dataLines = csv.trim().split('\n').slice(1)
-    // Build sortKey from each line: algo, parentPath (HD Path without last segment), lastIndex
+    const dataLines = mockTempFiles.get(tempPath)!.trim().split('\n').slice(1)
+    // Account and address are padded so string comparison matches numeric order.
     const keys = dataLines.map(line => {
-      const fields = line.split(',')
+      const { fields } = parseDataRow(line)
       const hdPath = fields[4]
       const algo = fields[5]
-      const lastSlash = hdPath.lastIndexOf('/')
-      const parentPath = hdPath.slice(0, lastSlash)
-      const lastIdx = parseInt(hdPath.slice(lastSlash + 1), 10)
-      return `${algo}\x00${parentPath}\x00${String(lastIdx).padStart(10, '0')}`
+      const parts = hdPath.split('/')
+      const paddedParent = `m/44/${parts[2]}/${parts[3].padStart(10, '0')}/${parts[4]}`
+      return `${algo}\x00${paddedParent}\x00${parts[5].padStart(10, '0')}`
     })
     const sortedKeys = [...keys].sort((a, b) => a.localeCompare(b))
     expect(keys).toEqual(sortedKeys)
@@ -106,20 +119,10 @@ describe('expandSortedJsonToTempCsv', () => {
 
   test('Address field is always empty in produced CSV', async () => {
     const { tempPath } = await expandSortedJsonToTempCsv(BASE_JSON)
-    const csv = mockTempFiles.get(tempPath)!
-    const dataLines = csv.trim().split('\n').slice(1)
-    for (const line of dataLines) {
-      const fields = line.split(',')
-      expect(fields[2]).toBe('') // Address column
-    }
-  })
-
-  test('mapping and CSV lines stay in 1:1 correspondence', async () => {
-    // For each sorted-output-row N, mapping[N] should be its original sourceIdx (0..totalRows-1)
-    const { tempPath, mappingPath } = await expandSortedJsonToTempCsv(BASE_JSON)
     const dataLines = mockTempFiles.get(tempPath)!.trim().split('\n').slice(1)
-    const indices = mockTempFiles.get(mappingPath)!.trim().split('\n').map(Number)
-    expect(dataLines.length).toBe(indices.length)
+    for (const line of dataLines) {
+      expect(parseDataRow(line).fields[2]).toBe('')
+    }
   })
 
   test('empty data returns zero rows but still writes header', async () => {
@@ -136,7 +139,6 @@ describe('expandSortedJsonToTempCsv', () => {
     const { tempPath, totalRows } = await expandSortedJsonToTempCsv(emptyJson)
     expect(totalRows).toBe(0)
     const csv = mockTempFiles.get(tempPath)!
-    // Header only, no data rows (trailing newline from header write)
     expect(csv.trim().split('\n').length).toBe(1)
   })
 })

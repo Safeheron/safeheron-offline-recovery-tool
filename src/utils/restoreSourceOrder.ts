@@ -1,20 +1,16 @@
 /**
- * Restore source row order for a derived CSV produced by the JSON-backup path.
+ * Restore source row order for a derived CSV produced by streamCsvProcess.
  *
- * Background (see O-2603 perf analysis):
- *   JSON expansion produces rows in "chain x account" order — each row has a
- *   distinct parent HD path, so the worker parentKeyCache misses on every row.
- *
- *   The fix: sort rows by (algo, parentPath, lastIndex) before derive so
- *   adjacent rows share a parent and the cache hits ~88%. After derive, this
- *   module restores the original source order using a sidecar mapping file
- *   written alongside the sorted temp CSV.
+ * Input format (derivedPath):
+ *   - Line 1: plain CSV header.
+ *   - Data lines: `<sourceIdx>\t<csvFields>` — sourceIdx is the row's target
+ *     position in the final output (set by the upstream stage).
  *
  * Algorithm (external bucket sort):
- *   Pass 1: streaming read the derived CSV + mapping file in lockstep,
- *           route each row to one of N buckets by sourceIdx range.
- *   Pass 2: for each bucket in order, load into memory, sort by sourceIdx,
- *           append to final CSV.
+ *   Pass 1: streaming read derivedPath; for each data line, parse the inline
+ *           sourceIdx and route to one of N buckets by sourceIdx range.
+ *   Pass 2: for each bucket in order, load, sort by sourceIdx, strip the
+ *           prefix, and append to finalPath.
  *
  *   Bucket size is tuned so each bucket fits comfortably in RAM (~25K rows /
  *   ~6MB), regardless of total row count.
@@ -41,21 +37,8 @@ export interface RestoreProgress {
 }
 
 /**
- * Read the sidecar mapping file (one sourceIdx per line) into a number array.
- */
-async function readMappingFile(mappingPath: string): Promise<number[]> {
-  const size = await getFileSize(mappingPath)
-  const mapping: number[] = []
-  await streamFileLines(mappingPath, size, line => {
-    const idx = parseInt(line, 10)
-    if (Number.isFinite(idx)) mapping.push(idx)
-  })
-  return mapping
-}
-
-/**
- * Read `derivedPath` (a normal CSV without __sourceIdx) and write a re-ordered
- * copy to `finalPath` using the sourceIdx permutation from `mappingPath`.
+ * Read `derivedPath` (inline-sourceIdx format) and write a re-ordered copy to
+ * `finalPath` with the sourceIdx prefix stripped.
  *
  * Both paths must be absolute. Intermediate bucket files are cleaned up on
  * success AND on error.
@@ -64,7 +47,6 @@ export async function restoreSourceOrder(
   derivedPath: string,
   finalPath: string,
   totalRows: number,
-  mappingPath: string,
   onProgress?: (p: RestoreProgress) => void,
   signal?: AbortSignal,
 ): Promise<{ totalRows: number; bucketCount: number; ms: number }> {
@@ -80,9 +62,6 @@ export async function restoreSourceOrder(
   }
 
   checkAborted()
-
-  // Read the mapping (sourceIdx per sorted-line) into memory (~17MB for 2.37M rows).
-  const mapping = await readMappingFile(mappingPath)
 
   const fileSize = await getFileSize(derivedPath)
   const maxSourceIdx = totalRows - 1
@@ -107,10 +86,9 @@ export async function restoreSourceOrder(
   }
 
   try {
-    // --- Pass 1: streaming read derived CSV, pair with mapping, route to buckets ---
+    // --- Pass 1: stream derivedPath; parse inline sourceIdx; route to buckets ---
     let headerLine = ''
     let headerParsed = false
-    let lineIdx = 0
 
     const flushBucket = async (b: number) => {
       const lines = bucketBuffers[b]
@@ -124,14 +102,17 @@ export async function restoreSourceOrder(
       if (!headerParsed) {
         headerLine = line
         headerParsed = true
-      } else {
-        const sourceIdx = lineIdx < mapping.length ? mapping[lineIdx] : lineIdx
-        lineIdx++
-        const b = Math.min(bucketCount - 1, Math.floor(sourceIdx / bucketRange))
-        bucketBuffers[b].push(`${sourceIdx}\t${line}`)
-        if (bucketBuffers[b].length >= BUCKET_FLUSH_THRESHOLD) {
-          await flushBucket(b)
-        }
+        return
+      }
+      const tabPos = line.indexOf('\t')
+      if (tabPos <= 0) return // skip malformed lines (shouldn't happen)
+      const sourceIdx = parseInt(line.slice(0, tabPos), 10)
+      if (!Number.isFinite(sourceIdx)) return
+      const b = Math.min(bucketCount - 1, Math.floor(sourceIdx / bucketRange))
+      // Bucket stores the full line (sourceIdx prefix intact); Pass 2 strips it.
+      bucketBuffers[b].push(line)
+      if (bucketBuffers[b].length >= BUCKET_FLUSH_THRESHOLD) {
+        await flushBucket(b)
       }
     }, offset => {
       checkAborted()
@@ -163,7 +144,7 @@ export async function restoreSourceOrder(
         const [bLines, bRemainder] = splitCsvLines(bText)
         const allLines = bRemainder.trim() ? [...bLines, bRemainder.trim()] : bLines
 
-        // Each bucket line is prefixed with "sourceIdx\toriginalCsvLine"
+        // Each bucket line is "<sourceIdx>\t<csvFields>"; parse, sort, strip prefix.
         const pairs: Array<{ idx: number; line: string }> = []
         for (const bucketLine of allLines) {
           if (bucketLine) {

@@ -1,3 +1,4 @@
+/* eslint-disable max-classes-per-file */
 import {
   MasterKeyPair,
   MasterKeyShare,
@@ -20,7 +21,7 @@ import {
   CSV_FIELD_NETWORK,
   CSV_FIELD_ADDRESS,
   CSV_FIELD_ADDR_TYPE,
-  CSV_REQUIRED_FIELD,
+  CSV_FIELD_HD_PATH,
   CSV_FIELD_PRIVATE_KEY,
   CSV_FIELD_PUBLIC_KEY,
   CSV_FIELD_ALGO,
@@ -54,7 +55,7 @@ export interface MultiAlgoHDKey {
 
 export interface RawCSVRow {
   [key: string]: string
-  [CSV_REQUIRED_FIELD]: string
+  [CSV_FIELD_HD_PATH]: string
   [CSV_FIELD_NETWORK]: string
   [CSV_FIELD_ADDRESS]: string
   [CSV_FIELD_ADDR_TYPE]: string
@@ -259,6 +260,48 @@ function splitPath(path: string): { parentPath: string; lastIndex: number } {
   }
 }
 
+/**
+ * Map subclass that evicts the least-recently-used entry when over capacity.
+ * On `get`, hit entries are moved to the end (most recent). On `set`, if the
+ * map is full the oldest entry is evicted before the new one is inserted.
+ *
+ * Extends Map so existing tests (`instanceof Map`) and callers continue to
+ * work; only `get` and `set` are overridden to track recency.
+ */
+export class LRUMap<K, V> extends Map<K, V> {
+  private readonly maxEntries: number
+
+  constructor(maxEntries: number) {
+    super()
+    this.maxEntries = maxEntries
+  }
+
+  override get(key: K): V | undefined {
+    const value = super.get(key)
+    if (value !== undefined) {
+      // Refresh recency by deleting + re-inserting.
+      super.delete(key)
+      super.set(key, value)
+    }
+    return value
+  }
+
+  override set(key: K, value: V): this {
+    if (super.has(key)) {
+      super.delete(key)
+    } else if (super.size >= this.maxEntries) {
+      const oldestKey = super.keys().next().value
+      if (oldestKey !== undefined) super.delete(oldestKey)
+    }
+    return super.set(key, value)
+  }
+}
+
+// Cache sizes picked so per-worker cache stays ~10MB regardless of total rows.
+// Entry ≈ 700B; 10K + 5K entries ≈ 10MB.
+const CHILD_CACHE_MAX = 10_000
+const PARENT_CACHE_MAX = 5_000
+
 export interface DeriveCache {
   parentKeyCache: Map<string, any>
   childKeyCache: Map<string, { childKey: any; priv: string; compressedPubKey: string }>
@@ -266,8 +309,8 @@ export interface DeriveCache {
 
 export function createDeriveCache(): DeriveCache {
   return {
-    parentKeyCache: new Map(),
-    childKeyCache: new Map(),
+    parentKeyCache: new LRUMap(PARENT_CACHE_MAX),
+    childKeyCache: new LRUMap(CHILD_CACHE_MAX),
   }
 }
 
@@ -280,7 +323,7 @@ export const recoverDerivedCSV = (
   const childKeyCache = cache?.childKeyCache ?? new Map<string, { childKey: any; priv: string; compressedPubKey: string }>()
 
   const res = csv.map(item => {
-    const path = item[CSV_REQUIRED_FIELD]
+    const path = item[CSV_FIELD_HD_PATH]
     const network = item[CSV_FIELD_NETWORK]
     const address = item[CSV_FIELD_ADDRESS]
     const algo = item[CSV_FIELD_ALGO]
@@ -364,7 +407,7 @@ export const recoverDerivedCSV = (
     result[CSV_FIELD_NETWORK] = network
     result[CSV_FIELD_ADDRESS] = outputAddress
     result[CSV_FIELD_ADDR_TYPE] = item[CSV_FIELD_ADDR_TYPE]
-    result[CSV_REQUIRED_FIELD] = path
+    result[CSV_FIELD_HD_PATH] = path
     result[CSV_FIELD_ALGO] = algo
     result[CSV_FIELD_PUBLIC_KEY] = compressedPubKey
     result[CSV_FIELD_PRIVATE_KEY] = privateKey
