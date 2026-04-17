@@ -1,6 +1,6 @@
 import { FC, useEffect, useRef, useState } from 'react'
 import styled from 'styled-components'
-import { dialog } from '@tauri-apps/api'
+import { invoke } from '@tauri-apps/api'
 
 import { Button } from '@/components/base'
 import attentionIcon from '@img/attention.svg'
@@ -19,7 +19,7 @@ import {
   TON_TEST_CHAIN_ALIAS,
 } from '@/utils/const'
 import { streamCsvProcess, StreamProgress, RecoverHDKeyError, NetworkDetectedError } from '@/utils/streamCsv'
-import { getFileSize, getTempPath, copyFile, registerSelectedPath, removeTempFile, readFileText } from '@/utils/tauriFileIO'
+import { getFileSize, getTempPath, copyFile, dialogSaveFile, removeTempFile, readFileText } from '@/utils/tauriFileIO'
 import { expandSortedJsonToTempCsv } from '@/utils/jsonBackup'
 import { restoreSourceOrder } from '@/utils/restoreSourceOrder'
 
@@ -185,6 +185,15 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       // Non-abort errors: clean up intermediates the unmount hook wouldn't touch.
       if (derivedPath) removeTempFile(derivedPath).catch(console.error)
       console.error('[RECOVER EXPORT FILE ERROR]: ', error)
+      // Write error to a .log temp file for production debugging.
+      getTempPath('.log').then(logPath =>
+        invoke('write_file_chunk', {
+          path: logPath,
+          append: false,
+          content: `[${new Date().toISOString()}] ${(error as Error)?.name}: ${(error as Error)?.message}\n`,
+        }).catch(() => { /* best-effort */ })
+      ).catch(() => { /* best-effort */ })
+
       if (error instanceof RecoverHDKeyError) {
         const k =
           version === 'v2'
@@ -206,11 +215,8 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
 
   const exportCSV = async () => {
     try {
-      const filePath = await dialog.save({
-        defaultPath: '/derived-recovery.csv',
-      })
+      const filePath = await dialogSaveFile('derived-recovery.csv')
       if (filePath && finalTempPath) {
-        await registerSelectedPath(filePath)
         await copyFile(finalTempPath, filePath)
         // Clean up temp files
         removeTempFile(finalTempPath).catch(console.error)

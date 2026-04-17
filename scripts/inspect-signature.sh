@@ -16,14 +16,18 @@
 
 set -euo pipefail
 
-# --- DMG cleanup ---
-_MOUNTED_VOLUME=""
-cleanup_dmg() {
-    if [ -n "$_MOUNTED_VOLUME" ] && [ -d "$_MOUNTED_VOLUME" ]; then
-        hdiutil detach "$_MOUNTED_VOLUME" -quiet 2>/dev/null || true
+# --- Cleanup ---
+_MOUNT_POINT=""
+_TMPDIR=""
+cleanup() {
+    if [ -n "$_MOUNT_POINT" ] && [ -d "$_MOUNT_POINT" ]; then
+        hdiutil detach "$_MOUNT_POINT" -force -quiet 2>/dev/null || true
+    fi
+    if [ -n "$_TMPDIR" ] && [ -d "$_TMPDIR" ]; then
+        rm -rf "$_TMPDIR"
     fi
 }
-trap cleanup_dmg EXIT
+trap cleanup EXIT
 
 # --- Parse args ---
 SUMMARY=0
@@ -51,16 +55,18 @@ IS_DMG=0
 
 if [[ "$TARGET" == *.dmg ]]; then
     IS_DMG=1
-    MOUNT_OUT=$(hdiutil attach "$TARGET" -nobrowse -readonly 2>&1 || true)
-    MOUNT_POINT=$(echo "$MOUNT_OUT" | grep -oE '/Volumes/.*' | head -n1 || true)
+    _TMPDIR=$(mktemp -d)
+    _MOUNT_POINT="$_TMPDIR/mnt"
+    mkdir -p "$_MOUNT_POINT"
 
-    if [ -n "$MOUNT_POINT" ] && [ -d "$MOUNT_POINT" ]; then
-        _MOUNTED_VOLUME="$MOUNT_POINT"
-        APP_PATH=$(find "$MOUNT_POINT" -maxdepth 1 -name "*.app" -type d | head -n1 || true)
+    if ! hdiutil attach "$TARGET" -nobrowse -readonly -mountpoint "$_MOUNT_POINT" -quiet 2>/dev/null; then
+        echo "Error: failed to mount DMG: $TARGET" >&2
+        exit 1
     fi
 
+    APP_PATH=$(find "$_MOUNT_POINT" -maxdepth 1 -name "*.app" -type d | head -n1 || true)
     if [ -z "$APP_PATH" ]; then
-        echo "Error: could not mount DMG or no .app found inside" >&2
+        echo "Error: no .app bundle found inside DMG" >&2
         exit 1
     fi
 elif [[ "$TARGET" == *.app ]]; then

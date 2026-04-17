@@ -67,12 +67,12 @@ export async function restoreSourceOrder(
   const maxSourceIdx = totalRows - 1
   const bucketCount = Math.max(1, Math.ceil((maxSourceIdx + 1) / TARGET_ROWS_PER_BUCKET))
   const bucketRange = Math.ceil((maxSourceIdx + 1) / bucketCount)
-  const tempBase = await getTempPath()
-  // The Rust side of `remove_temp_file` (and the app's startup cleanup sweep) only
-  // recognizes files whose names match `safeheron-offline-recovery-*.csv`. Strip the
-  // trailing `.csv` first so each bucket becomes `...-<hex>.bkt${i}.csv`.
-  const tempPrefix = tempBase.endsWith('.csv') ? tempBase.slice(0, -4) : tempBase
-  const bucketPaths = Array.from({ length: bucketCount }, (_, i) => `${tempPrefix}.bkt${i}.csv`)
+  // Each bucket gets its own temp file created atomically by get_temp_path.
+  const bucketPaths: string[] = []
+  for (let i = 0; i < bucketCount; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    bucketPaths.push(await getTempPath())
+  }
   const bucketBuffers: string[][] = Array.from({ length: bucketCount }, () => [])
   // write_file_chunk's append mode on the Rust side requires the file to exist;
   // we track first-flush per bucket so the initial write uses append=false (create).

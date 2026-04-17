@@ -1,9 +1,8 @@
 import { FC } from 'react'
-import { dialog, fs } from '@tauri-apps/api'
 import styled from 'styled-components'
 
 import { useTranslation } from '@/i18n'
-import { registerSelectedPath } from '@/utils/tauriFileIO'
+import { dialogOpenFile, getFileSize, readFileText } from '@/utils/tauriFileIO'
 
 export interface FileInfo {
   name: string
@@ -21,21 +20,14 @@ const Upload: FC<Props> = ({ onChange, file, disabled }) => {
   const { t } = useTranslation()
   const handleClick = async () => {
     if (disabled) return
-    const filePath = await dialog.open({
-      filters: [
-        {
-          name: 'Wallet data file',
-          extensions: ['csv', 'json'],
-        },
-      ],
-    })
-    if (!filePath || Array.isArray(filePath)) return
+    const filePath = await dialogOpenFile()
+    if (!filePath) return
 
-    await registerSelectedPath(filePath)
     const isJson = filePath.toLowerCase().endsWith('.json')
 
     if (isJson) {
-      const fileText = await fs.readTextFile(filePath)
+      const size = await getFileSize(filePath)
+      const fileText = await readFileText(filePath, size)
       onChange({ path: filePath, name: filePath, text: fileText })
     } else {
       onChange({ path: filePath, name: filePath })

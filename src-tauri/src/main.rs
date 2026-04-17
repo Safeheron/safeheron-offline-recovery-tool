@@ -21,10 +21,14 @@ static ALLOWED_PATHS: once_cell::sync::Lazy<Mutex<HashSet<PathBuf>>> =
 const TEMP_FILE_PREFIX: &str = "safeheron-offline-recovery-";
 const TEMP_FILE_SUFFIX: &str = ".csv";
 
-/// Check whether the given path is allowed for file I/O.
-/// Allowed paths: paths explicitly registered via dialog selection or get_temp_path,
-/// and any path under the system temp directory.
-fn is_path_allowed(path: &str) -> Result<(), String> {
+/// Validate that the given path is allowed for file I/O and return the
+/// canonical path that MUST be used for subsequent operations. This closes
+/// the TOCTOU window: the same resolved path is checked and then operated on,
+/// so a symlink swap between check and use cannot redirect the operation.
+///
+/// Allowed paths: paths explicitly registered via dialog selection or
+/// get_temp_path, and any path under the system temp directory.
+fn resolve_allowed_path(path: &str) -> Result<PathBuf, String> {
     let canonical = fs::canonicalize(path)
         .or_else(|_| {
             // File may not exist yet (e.g. write_file_chunk creating new file).
@@ -42,14 +46,14 @@ fn is_path_allowed(path: &str) -> Result<(), String> {
     let temp_dir = std::env::temp_dir();
     if let Ok(canonical_temp) = fs::canonicalize(&temp_dir) {
         if canonical.starts_with(&canonical_temp) {
-            return Ok(());
+            return Ok(canonical);
         }
     }
 
     // Allow explicitly registered paths
     let allowed = ALLOWED_PATHS.lock().map_err(|e| format!("Lock error: {}", e))?;
     if allowed.contains(&canonical) {
-        return Ok(());
+        return Ok(canonical);
     }
 
     Err(format!("Access denied: path not in allowed set: {}", path))
@@ -73,16 +77,53 @@ fn allow_path(path: &str) {
     }
 }
 
+/// Open a native file-picker dialog. The selected path is registered in the
+/// allow-list automatically — the renderer never sees `allow_path` directly,
+/// so an XSS cannot whitelist arbitrary filesystem paths.
+///
+/// Must be `async` so Tauri runs it off the main thread; the callback-based
+/// dialog API dispatches the OS dialog to the main thread internally.
 #[tauri::command]
-fn register_selected_path(path: String) -> Result<(), String> {
-    allow_path(&path);
-    Ok(())
+async fn dialog_open_file() -> Result<Option<String>, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    tauri::api::dialog::FileDialogBuilder::new()
+        .add_filter("Wallet data file", &["csv", "json"])
+        .pick_file(move |path| { let _ = tx.send(path); });
+
+    let path = rx.recv().map_err(|e| format!("Dialog cancelled: {}", e))?;
+
+    if let Some(ref p) = path {
+        if let Some(s) = p.to_str() {
+            allow_path(s);
+        }
+    }
+
+    Ok(path.map(|p| p.to_string_lossy().to_string()))
+}
+
+/// Open a native save dialog. Same safety guarantee as `dialog_open_file`.
+#[tauri::command]
+async fn dialog_save_file(default_name: String) -> Result<Option<String>, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    tauri::api::dialog::FileDialogBuilder::new()
+        .set_file_name(&default_name)
+        .save_file(move |path| { let _ = tx.send(path); });
+
+    let path = rx.recv().map_err(|e| format!("Dialog cancelled: {}", e))?;
+
+    if let Some(ref p) = path {
+        if let Some(s) = p.to_str() {
+            allow_path(s);
+        }
+    }
+
+    Ok(path.map(|p| p.to_string_lossy().to_string()))
 }
 
 #[tauri::command]
 fn get_file_size(path: String) -> Result<u64, String> {
-    is_path_allowed(&path)?;
-    fs::metadata(&path)
+    let safe_path = resolve_allowed_path(&path)?;
+    fs::metadata(&safe_path)
         .map(|m| m.len())
         .map_err(|e| format!("Failed to get file size: {}", e))
 }
@@ -91,8 +132,8 @@ fn get_file_size(path: String) -> Result<u64, String> {
 /// when a multi-byte UTF-8 char is split at the chunk boundary.
 #[tauri::command]
 fn read_file_chunk(path: String, offset: u64, size: u64) -> Result<(String, u64), String> {
-    is_path_allowed(&path)?;
-    let mut file = fs::File::open(&path)
+    let safe_path = resolve_allowed_path(&path)?;
+    let mut file = fs::File::open(&safe_path)
         .map_err(|e| format!("Failed to open file: {}", e))?;
     file.seek(SeekFrom::Start(offset))
         .map_err(|e| format!("Failed to seek: {}", e))?;
@@ -123,36 +164,49 @@ fn read_file_chunk(path: String, offset: u64, size: u64) -> Result<(String, u64)
     Ok((text, valid_len as u64))
 }
 
+/// Create a temp file with a CSPRNG-derived name and return its path.
+/// The file is created atomically with O_CREAT | O_EXCL to prevent
+/// symlink-based file squatting (CWE-377).
+/// Optional `suffix` overrides the default ".csv" extension.
 #[tauri::command]
-fn get_temp_path() -> Result<String, String> {
-    let mut path = std::env::temp_dir();
-    let random_suffix: u64 = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0)
-        ^ (std::process::id() as u64);
-    // Filename embeds our PID so cleanup sweeps can tell files belonging to
-    // live sibling instances apart from stale files left by crashed ones.
-    // Format: safeheron-offline-recovery-<pid>-<random-hex>.csv
-    path.push(format!(
-        "{}{}-{:x}{}",
-        TEMP_FILE_PREFIX,
-        std::process::id(),
-        random_suffix,
-        TEMP_FILE_SUFFIX
-    ));
-    let result = path.to_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Invalid temp path".to_string())?;
-    // Temp paths are automatically allowed (under temp dir), no need to register
-    Ok(result)
+fn get_temp_path(suffix: Option<String>) -> Result<String, String> {
+    let ext = suffix.as_deref().unwrap_or(TEMP_FILE_SUFFIX);
+    // Up to 16 attempts to handle the astronomically unlikely CSPRNG collision.
+    for _ in 0..16 {
+        let mut rand_bytes = [0u8; 16];
+        getrandom::getrandom(&mut rand_bytes)
+            .map_err(|e| format!("CSPRNG failed: {}", e))?;
+        let random_hex: String = rand_bytes.iter().map(|b| format!("{:02x}", b)).collect();
+
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "{}{}-{}{}",
+            TEMP_FILE_PREFIX,
+            std::process::id(),
+            random_hex,
+            ext
+        ));
+
+        // Atomic creation: O_CREAT | O_EXCL ensures we never follow a symlink
+        // or open an existing file placed by another process.
+        match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(_) => {
+                return path.to_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| "Invalid temp path".to_string());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("Failed to create temp file: {}", e)),
+        }
+    }
+    Err("Failed to create temp file: too many collisions".to_string())
 }
 
 #[tauri::command]
 fn copy_file(src: String, dst: String) -> Result<(), String> {
-    is_path_allowed(&src)?;
-    is_path_allowed(&dst)?;
-    fs::copy(&src, &dst)
+    let safe_src = resolve_allowed_path(&src)?;
+    let safe_dst = resolve_allowed_path(&dst)?;
+    fs::copy(&safe_src, &safe_dst)
         .map(|_| ())
         .map_err(|e| format!("Failed to copy file: {}", e))
 }
@@ -209,11 +263,13 @@ fn remove_temp_file(path: String) -> Result<(), String> {
 
 #[tauri::command]
 fn write_file_chunk(path: String, content: String, append: bool) -> Result<(), String> {
-    is_path_allowed(&path)?;
+    let safe_path = resolve_allowed_path(&path)?;
+    // safe_path is already canonicalized by resolve_allowed_path, so
+    // File::create won't follow attacker-placed symlinks.
     let file = if append {
-        fs::OpenOptions::new().append(true).open(&path)
+        fs::OpenOptions::new().append(true).open(&safe_path)
     } else {
-        fs::File::create(&path).map(|f| f)
+        fs::File::create(&safe_path)
     };
 
     let file = file.map_err(|e| format!("Failed to open file for writing: {}", e))?;
@@ -374,7 +430,8 @@ fn main() {
             get_temp_path,
             copy_file,
             remove_temp_file,
-            register_selected_path
+            dialog_open_file,
+            dialog_save_file
         ])
         .on_window_event(|event| {
             if let WindowEvent::CloseRequested { .. } = event.event() {

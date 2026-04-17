@@ -138,7 +138,10 @@ const getTargetCoinObjects = async (client, ftoken, owner) => {
     owner,
     coinType: ftoken,
   })
-  const coinObjects = res.data.sort((a, b) => b.balance - a.balance)
+  const coinObjects = res.data.sort((a, b) => {
+    const diff = BigInt(b.balance) - BigInt(a.balance)
+    return diff > 0n ? 1 : diff < 0n ? -1 : 0
+  })
   return coinObjects
 }
 

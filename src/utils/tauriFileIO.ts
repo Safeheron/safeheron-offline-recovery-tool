@@ -17,8 +17,8 @@ export async function readFileChunk(
   return { text, bytesRead }
 }
 
-export async function getTempPath(): Promise<string> {
-  return invoke<string>('get_temp_path')
+export async function getTempPath(suffix?: string): Promise<string> {
+  return invoke<string>('get_temp_path', { suffix })
 }
 
 export async function copyFile(src: string, dst: string): Promise<void> {
@@ -37,8 +37,14 @@ export async function removeTempFile(path: string): Promise<void> {
   return invoke<void>('remove_temp_file', { path })
 }
 
-export async function registerSelectedPath(path: string): Promise<void> {
-  return invoke<void>('register_selected_path', { path })
+/** Open a native file-picker dialog. Path is allow-listed on the Rust side. */
+export async function dialogOpenFile(): Promise<string | null> {
+  return invoke<string | null>('dialog_open_file')
+}
+
+/** Open a native save dialog. Path is allow-listed on the Rust side. */
+export async function dialogSaveFile(defaultName: string): Promise<string | null> {
+  return invoke<string | null>('dialog_save_file', { defaultName })
 }
 
 // --- Shared streaming helpers ---

@@ -156,7 +156,7 @@ SIGN_LOG="$LOG_DIR/inspect-signature.log"
 # Parse the bits we care about.
 HASH_VALUE=$(grep -E "^SHA-256:" "$VERIFY_LOG" | awk '{print $2}' | head -n1)
 SIG_STATE=$(grep -E "^  State:" "$SIGN_LOG" | awk '{print $2}' | head -n1)
-SIG_VALIDITY=$(grep -E "^  Validity:" "$SIGN_LOG" | sed -E 's/^  Validity:[[:space:]]+//' | head -n1)
+GK_LINE=$(grep -E "^  Gatekeeper:" "$SIGN_LOG" | head -n1)
 
 echo ""
 echo "================================================================"
@@ -168,7 +168,11 @@ if [ "$SIG_STATE" = "UNSIGNED" ]; then
     echo "  Signed:  No"
 else
     echo "  Signed:  Yes"
-    echo "  Validity: ${SIG_VALIDITY:-<unknown>}"
+    if echo "$GK_LINE" | grep -q "accepted"; then
+        echo "  Gatekeeper: ✅ accepted — signed and notarized"
+    else
+        echo "  Gatekeeper: ❌ rejected (not notarized or invalid signature)"
+    fi
 fi
 echo ""
 info "Full logs: $VERIFY_LOG, $SIGN_LOG"

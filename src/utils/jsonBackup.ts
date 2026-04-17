@@ -73,18 +73,25 @@ export function tokenizeItemString(s: string): string[] {
 }
 
 /**
- * Expand an array of [start, end] ranges into a flat list of integers.
- * e.g. [[0, 2]] → [0, 1, 2]
- * e.g. [[0, 7], [9, 9]] → [0, 1, 2, 3, 4, 5, 6, 7, 9]
+ * Lazily iterate over an array of [start, end] ranges without
+ * materializing the full index list in memory.
+ * e.g. [[0, 2]] yields 0, 1, 2
+ * e.g. [[0, 7], [9, 9]] yields 0, 1, 2, 3, 4, 5, 6, 7, 9
  */
-export function expandRanges(ranges: number[][]): number[] {
-  const result: number[] = []
+export function* iterateRanges(ranges: number[][]): Generator<number> {
   for (const [start, end] of ranges) {
     for (let i = start; i <= end; i++) {
-      result.push(i)
+      yield i
     }
   }
-  return result
+}
+
+/**
+ * Expand an array of [start, end] ranges into a flat list of integers.
+ * Kept for test compatibility; prefer iterateRanges() in production paths.
+ */
+export function expandRanges(ranges: number[][]): number[] {
+  return Array.from(iterateRanges(ranges))
 }
 
 export interface ItemDescriptor {
@@ -268,14 +275,12 @@ type ExpandedRow = { csvLine: string; sourceIdx: number; sortKey: string }
  * comparison matches numeric comparison, keeping the stream monotonic for k-way merge.
  */
 function* itemRowStream(item: ItemDescriptor, startSourceIdx: number): Generator<ExpandedRow> {
-  const accountIndices = expandRanges(item.path3Ranges)
-  const addressIndices = expandRanges(item.path5Ranges)
   let sourceIdx = startSourceIdx
-  for (const accountIdx of accountIndices) {
+  for (const accountIdx of iterateRanges(item.path3Ranges)) {
     const parentPath = `m/44/${item.path2}/${accountIdx}/${item.path4}`
     const paddedAccount = String(accountIdx).padStart(10, '0')
     const paddedParent = `m/44/${item.path2}/${paddedAccount}/${item.path4}`
-    for (const addressIdx of addressIndices) {
+    for (const addressIdx of iterateRanges(item.path5Ranges)) {
       const hdPath = `${parentPath}/${addressIdx}`
       const fields = [
         item.blockchain,
