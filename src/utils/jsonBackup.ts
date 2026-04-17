@@ -5,6 +5,7 @@ import {
 } from './tauriFileIO'
 import { escapeCsvField } from './csvLineParser'
 import { sanitizeCsvValue } from './csv'
+import { NetworkDetectedError } from './errors'
 import {
   CSV_FIELD_ADDR_TYPE,
   CSV_FIELD_BLOCKCHAIN,
@@ -321,7 +322,9 @@ function* itemRowStream(item: ItemDescriptor, startSourceIdx: number): Generator
 export async function expandSortedJsonToTempCsv(
   jsonText: string,
   onProgress?: (emitted: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<{ tempPath: string; totalRows: number }> {
+  if (signal?.aborted) throw new NetworkDetectedError()
   const { items } = parseItemDescriptors(jsonText)
 
   // Precompute each item's starting sourceIdx (cumulative row count).
@@ -379,10 +382,12 @@ export async function expandSortedJsonToTempCsv(
     if (!done) heap.push({ ...value, iterIdx: entry.iterIdx })
 
     if (outBuf.length >= CHUNK_ROWS) {
+      if (signal?.aborted) throw new NetworkDetectedError()
       // eslint-disable-next-line no-await-in-loop
       await flush()
     }
   }
+  if (signal?.aborted) throw new NetworkDetectedError()
   await flush()
   onProgress?.(totalRows, totalRows)
 

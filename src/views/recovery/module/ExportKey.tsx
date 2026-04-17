@@ -105,7 +105,7 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
           if (total > 0) {
             setProgress(Math.min(JSON_EXPAND_MAX, Math.round((emitted / total) * JSON_EXPAND_MAX)))
           }
-        })
+        }, controller.signal)
         expandedCsvPathRef.current = expanded.tempPath
         inputCsvPath = expanded.tempPath
 
