@@ -1,3 +1,4 @@
+/* eslint-disable max-classes-per-file */
 import initWasm from '../lib/liquid/liquid'
 // @ts-ignore
 import liquidWasmBuffer from '../lib/liquid/liquid.wasm'
@@ -26,6 +27,14 @@ const getEnvironment = (): 'node' | 'browser' => {
     return 'node'
   }
   return 'node'
+}
+
+/** Thrown when the Liquid WASM call returns a non-success status. */
+export class LiquidSDKError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'LiquidSDKError'
+  }
 }
 
 export class LiquidSDK extends BaseSDK {
@@ -64,15 +73,15 @@ export class LiquidSDK extends BaseSDK {
     network: string
     address_type: string
   }): string {
-    try {
-      const res = this.invokeWasmMethod<{ non_confidential_address: string }>(
-        '_liquids_create_non_confidential_em',
-        params
+    const res = this.invokeWasmMethod<{ non_confidential_address: string; error?: string }>(
+      '_liquids_create_non_confidential_em',
+      params
+    )
+    if (!res.success) {
+      throw new LiquidSDKError(
+        `${params.network}/${params.address_type}: ${(res as any)?.data?.error ?? 'WASM call failed'}`
       )
-      if (res.success) return res.data.non_confidential_address
-    } catch (error) {
-      console.error('[LIQUID SDK ERROR]: ', error)
     }
-    return ''
+    return res.data.non_confidential_address
   }
 }

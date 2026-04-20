@@ -14,6 +14,8 @@ import {
 import { parseCsvHeader, splitCsvFields } from './csvLineParser'
 import type { CsvHeaderInfo } from './csvLineParser'
 
+import { LiquidSDKError } from '@/wasm/liquidSDK'
+
 // --- Streaming pipeline orchestrator ---
 
 export { RecoverHDKeyError, NetworkDetectedError }
@@ -350,6 +352,7 @@ export async function streamCsvProcess(
         if (msg.errorName === 'ValidateAddressError') outerReject(new ValidateAddressError(msg.error))
         else if (msg.errorName === 'MissRequiredFieldError') outerReject(new MissRequiredFieldError(msg.error))
         else if (msg.errorName === 'UnsupportBlockChainError') outerReject(new UnsupportBlockChainError(msg.error))
+        else if (msg.errorName === 'LiquidSDKError') outerReject(new LiquidSDKError(msg.error))
         else outerReject(new Error(msg.error))
       }
     }

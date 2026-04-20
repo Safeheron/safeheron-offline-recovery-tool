@@ -23,6 +23,7 @@ import { streamCsvProcess, StreamProgress, RecoverHDKeyError, NetworkDetectedErr
 import { getFileSize, getTempPath, copyFile, dialogSaveFile, removeTempFile, readFileText } from '@/utils/tauriFileIO'
 import { expandSortedJsonToTempCsv, InvalidFormatError, UnsupportedVersionError } from '@/utils/jsonBackup'
 import { restoreSourceOrder } from '@/utils/restoreSourceOrder'
+import { LiquidSDKError } from '@/wasm/liquidSDK'
 
 // Files under this size use a single worker (worker init overhead ~200ms
 // vs near-zero derive time for small files makes multi-worker pointless).
@@ -198,6 +199,7 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         if (error instanceof MissDataError) return 'MissDataError'
         if (error instanceof ValidateAddressError) return 'ValidateAddressError: address mismatch (details redacted)'
         if (error instanceof RecoverHDKeyError) return 'RecoverHDKeyError: key recovery failed (details redacted)'
+        if (error instanceof LiquidSDKError) return `LiquidSDKError: ${e.message}`
         return 'UnknownError (details redacted)'
       })()
       console.error('[RECOVER EXPORT FILE ERROR]:', safeLog)

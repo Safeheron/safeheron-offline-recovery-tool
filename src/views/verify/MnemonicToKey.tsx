@@ -10,6 +10,7 @@ import CopyInput from '@/components/CopyInput'
 import { LanguageEnum, useTranslation } from '@/i18n'
 import ChainCodeInput from '@/components/ChainCodeInput'
 import { handleFourCharMnemonic, mnemonicVerfiy } from '@/utils/mnemonic'
+import { isDev } from '@/utils/env'
 
 const MnemonicToKey = () => {
   const [searchParams] = useSearchParams()
@@ -68,7 +69,11 @@ const MnemonicToKey = () => {
       })
       setPubkey(formatedJson)
     } catch (err) {
-      console.error('[mnemonicToExtendedPub ERROR]: ', err)
+      if (isDev) {
+        console.error('[mnemonicToExtendedPub ERROR]: ', err)
+      } else {
+        console.error('[mnemonicToExtendedPub ERROR]: mnemonic-to-xpub failed (details redacted)')
+      }
       const k = chainCodeRequired
         ? 'Verify.MnemonicToKey.error'
         : 'Verify.MnemonicToKey.errorV2'

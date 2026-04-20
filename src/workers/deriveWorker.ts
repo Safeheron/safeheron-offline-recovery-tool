@@ -9,7 +9,7 @@ import {
 } from '@/utils/mpc'
 import { sanitizeCsvValue, MissRequiredFieldError, UnsupportBlockChainError } from '@/utils/csv'
 import { parseCsvHeader, parseCsvLine, escapeCsvField } from '@/utils/csvLineParser'
-import { LiquidSDK } from '@/wasm/liquidSDK'
+import { LiquidSDK, LiquidSDKError } from '@/wasm/liquidSDK'
 
 interface InitMessage {
   type: 'init'
@@ -104,6 +104,7 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
       if (err instanceof ValidateAddressError) errorName = 'ValidateAddressError'
       else if (err instanceof MissRequiredFieldError) errorName = 'MissRequiredFieldError'
       else if (err instanceof UnsupportBlockChainError) errorName = 'UnsupportBlockChainError'
+      else if (err instanceof LiquidSDKError) errorName = 'LiquidSDKError'
       self.postMessage({
         type: 'derive-error',
         batchIndex: msg.batchIndex,
