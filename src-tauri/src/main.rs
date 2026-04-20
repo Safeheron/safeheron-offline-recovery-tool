@@ -17,9 +17,23 @@ static ALLOWED_PATHS: once_cell::sync::Lazy<Mutex<HashSet<PathBuf>>> =
 
 /// Prefix applied to every temp file we create. Intentionally includes the
 /// vendor/app name so startup/window-close sweeps can never touch another
-/// app's files. Keep in sync with `get_temp_path` and `cleanup_temp_files`.
+/// app's files. Paired with `APP_TEMP_SUFFIXES` below to form the
+/// "is this one of ours?" test.
 const TEMP_FILE_PREFIX: &str = "safeheron-offline-recovery-";
-const TEMP_FILE_SUFFIX: &str = ".csv";
+/// All suffixes that identify files created by this app. Files matching
+/// `TEMP_FILE_PREFIX` + any of these suffixes are eligible for the cleanup
+/// sweep and remove_temp_file. `get_temp_path` rejects any suffix not in
+/// this list so callers cannot silently create orphans.
+/// First entry is the default suffix for `get_temp_path`.
+const APP_TEMP_SUFFIXES: &[&str] = &[".csv", ".log"];
+const TEMP_FILE_SUFFIX: &str = APP_TEMP_SUFFIXES[0];
+
+/// Whether `name` is a filename this app created (matches our prefix and
+/// any of our known suffixes).
+fn is_app_temp_file(name: &str) -> bool {
+    name.starts_with(TEMP_FILE_PREFIX)
+        && APP_TEMP_SUFFIXES.iter().any(|s| name.ends_with(s))
+}
 
 /// Validate that the given path is allowed for file I/O and return the
 /// canonical path that MUST be used for subsequent operations. This closes
@@ -167,10 +181,14 @@ fn read_file_chunk(path: String, offset: u64, size: u64) -> Result<(String, u64)
 /// Create a temp file with a CSPRNG-derived name and return its path.
 /// The file is created atomically with O_CREAT | O_EXCL to prevent
 /// symlink-based file squatting (CWE-377).
-/// Optional `suffix` overrides the default ".csv" extension.
+/// Optional `suffix` overrides the default extension; must be one of
+/// `APP_TEMP_SUFFIXES` so cleanup can recognize and remove the file.
 #[tauri::command]
 fn get_temp_path(suffix: Option<String>) -> Result<String, String> {
     let ext = suffix.as_deref().unwrap_or(TEMP_FILE_SUFFIX);
+    if !APP_TEMP_SUFFIXES.contains(&ext) {
+        return Err(format!("Invalid temp file suffix: {}", ext));
+    }
     // Up to 16 attempts to handle the astronomically unlikely CSPRNG collision.
     for _ in 0..16 {
         let mut rand_bytes = [0u8; 16];
@@ -247,7 +265,7 @@ fn remove_temp_file(path: String) -> Result<(), String> {
     let file_name_ok = canonical_path
         .file_name()
         .and_then(|n| n.to_str())
-        .map(|n| n.starts_with(TEMP_FILE_PREFIX) && n.ends_with(TEMP_FILE_SUFFIX))
+        .map(is_app_temp_file)
         .unwrap_or(false);
     if !file_name_ok {
         return Err("Access denied: can only remove files created by this app".into());
@@ -285,7 +303,9 @@ fn write_file_chunk(path: String, content: String, append: bool) -> Result<(), S
 /// written by an older build that didn't embed a PID — those should be
 /// treated as stale and cleaned up unconditionally.
 fn parse_temp_file_pid(name: &str) -> Option<u32> {
-    let stripped = name.strip_prefix(TEMP_FILE_PREFIX)?.strip_suffix(TEMP_FILE_SUFFIX)?;
+    let stripped = name.strip_prefix(TEMP_FILE_PREFIX)?;
+    let stripped = APP_TEMP_SUFFIXES.iter()
+        .find_map(|s| stripped.strip_suffix(s))?;
     // Format: "<pid>-<random_hex>"
     let (pid_str, _) = stripped.split_once('-')?;
     pid_str.parse().ok()
@@ -380,7 +400,7 @@ fn cleanup_temp_files(scope: CleanupScope) {
             Some(n) => n,
             None => continue,
         };
-        if !(name.starts_with(TEMP_FILE_PREFIX) && name.ends_with(TEMP_FILE_SUFFIX)) {
+        if !is_app_temp_file(name) {
             continue
         }
         let pid = parse_temp_file_pid(name);

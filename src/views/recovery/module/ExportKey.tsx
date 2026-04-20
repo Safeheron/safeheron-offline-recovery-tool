@@ -6,7 +6,8 @@ import { Button } from '@/components/base'
 import attentionIcon from '@img/attention.svg'
 import failIcon from '@img/fail.svg'
 import { sleep } from '@/utils/common'
-import { MissRequiredFieldError, UnsupportBlockChainError } from '@/utils/csv'
+import { MissRequiredFieldError, UnsupportBlockChainError, MissDataError } from '@/utils/csv'
+import { ValidateAddressError } from '@/utils/mpc'
 import { useTranslation } from '@/i18n'
 import { useVersion } from '@/components/SelectVersion'
 import {
@@ -20,7 +21,7 @@ import {
 } from '@/utils/const'
 import { streamCsvProcess, StreamProgress, RecoverHDKeyError, NetworkDetectedError } from '@/utils/streamCsv'
 import { getFileSize, getTempPath, copyFile, dialogSaveFile, removeTempFile, readFileText } from '@/utils/tauriFileIO'
-import { expandSortedJsonToTempCsv } from '@/utils/jsonBackup'
+import { expandSortedJsonToTempCsv, InvalidFormatError, UnsupportedVersionError } from '@/utils/jsonBackup'
 import { restoreSourceOrder } from '@/utils/restoreSourceOrder'
 
 // Files under this size use a single worker (worker init overhead ~200ms
@@ -185,12 +186,28 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       // Non-abort errors: clean up intermediates the unmount hook wouldn't touch.
       if (derivedPath) removeTempFile(derivedPath).catch(console.error)
       console.error('[RECOVER EXPORT FILE ERROR]: ', error)
-      // Write error to a .log temp file for production debugging.
+      // Write sanitized error to a .log temp file for production debugging.
+      // Only output error type + safe context; strip details that may contain
+      // addresses, keys, or other user-specific data.
+      const safeLog = (() => {
+        // Use instanceof — `error.name` is unreliable (subclasses without
+        // explicit this.name default to 'Error', and minifiers may mangle names).
+        const e = error as Error
+        if (error instanceof InvalidFormatError) return `InvalidFormatError: ${e.message}`
+        if (error instanceof UnsupportedVersionError) return `UnsupportedVersionError: ${e.message}`
+        if (error instanceof NetworkDetectedError) return `NetworkDetectedError: ${e.message}`
+        if (error instanceof MissRequiredFieldError) return `MissRequiredFieldError: ${e.message}`
+        if (error instanceof UnsupportBlockChainError) return `UnsupportBlockChainError: ${e.message}`
+        if (error instanceof MissDataError) return 'MissDataError'
+        if (error instanceof ValidateAddressError) return 'ValidateAddressError: address mismatch (details redacted)'
+        if (error instanceof RecoverHDKeyError) return 'RecoverHDKeyError: key recovery failed (details redacted)'
+        return 'UnknownError (details redacted)'
+      })()
       getTempPath('.log').then(logPath =>
         invoke('write_file_chunk', {
           path: logPath,
           append: false,
-          content: `[${new Date().toISOString()}] ${(error as Error)?.name}: ${(error as Error)?.message}\n`,
+          content: `[${new Date().toISOString()}] ${safeLog}\n`,
         }).catch(() => { /* best-effort */ })
       ).catch(() => { /* best-effort */ })
 
