@@ -1,6 +1,5 @@
 import { FC, useEffect, useRef, useState } from 'react'
 import styled from 'styled-components'
-import { fs } from '@tauri-apps/api'
 
 import { Button } from '@/components/base'
 import Upload, { FileInfo } from '@/components/Upload'
@@ -10,7 +9,7 @@ import {
   UnsupportBlockChainError,
 } from '@/utils/csv'
 import { useTranslation } from '@/i18n'
-import { readFileChunk, getTempPath, copyFile, getFileSize, removeTempFile } from '@/utils/tauriFileIO'
+import { readFileChunk, getTempPath, copyFile, getFileSize, removeTempFile, readFileText } from '@/utils/tauriFileIO'
 import { parseCsvHeader, parseCsvLine, splitCsvLines } from '@/utils/csvLineParser'
 
 interface Props {
@@ -46,9 +45,13 @@ const ImportFile: FC<Props> = ({ next, onComplete, originalFile }) => {
         try {
           const { name, path } = originalFile
           const isJson = path.toLowerCase().endsWith('.json')
-          const rawFile: FileInfo = isJson
-            ? { name, path, text: await fs.readTextFile(path) }
-            : { name, path }
+          let rawFile: FileInfo
+          if (isJson) {
+            const size = await getFileSize(path)
+            rawFile = { name, path, text: await readFileText(path, size) }
+          } else {
+            rawFile = { name, path }
+          }
           handleChange(rawFile)
         } catch (err) {
           console.error('[AUTO-IMPORT] Failed to re-import original file:', err)

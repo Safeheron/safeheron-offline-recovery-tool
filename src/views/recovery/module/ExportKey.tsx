@@ -185,17 +185,14 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
       }
       // Non-abort errors: clean up intermediates the unmount hook wouldn't touch.
       if (derivedPath) removeTempFile(derivedPath).catch(console.error)
-      console.error('[RECOVER EXPORT FILE ERROR]: ', error)
-      // Write sanitized error to a .log temp file for production debugging.
-      // Only output error type + safe context; strip details that may contain
-      // addresses, keys, or other user-specific data.
+      // Sanitize error BEFORE any logging: raw error may carry addresses,
+      // keys, or other user-specific data in its message/stack.
       const safeLog = (() => {
         // Use instanceof — `error.name` is unreliable (subclasses without
         // explicit this.name default to 'Error', and minifiers may mangle names).
         const e = error as Error
         if (error instanceof InvalidFormatError) return `InvalidFormatError: ${e.message}`
         if (error instanceof UnsupportedVersionError) return `UnsupportedVersionError: ${e.message}`
-        if (error instanceof NetworkDetectedError) return `NetworkDetectedError: ${e.message}`
         if (error instanceof MissRequiredFieldError) return `MissRequiredFieldError: ${e.message}`
         if (error instanceof UnsupportBlockChainError) return `UnsupportBlockChainError: ${e.message}`
         if (error instanceof MissDataError) return 'MissDataError'
@@ -203,6 +200,7 @@ const ExportKey: FC<Props> = ({ data, prev, next }) => {
         if (error instanceof RecoverHDKeyError) return 'RecoverHDKeyError: key recovery failed (details redacted)'
         return 'UnknownError (details redacted)'
       })()
+      console.error('[RECOVER EXPORT FILE ERROR]:', safeLog)
       getTempPath('.log').then(logPath =>
         invoke('write_file_chunk', {
           path: logPath,

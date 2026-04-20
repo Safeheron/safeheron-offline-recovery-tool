@@ -49,11 +49,6 @@
         "create": true,
         "close": true,
         "setFocus": true
-      },
-      "fs": {
-        "readFile": true,
-        "writeFile": true,
-        "scope": []
       }
     },
     "windows": [
