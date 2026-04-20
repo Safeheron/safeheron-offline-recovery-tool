@@ -10,7 +10,8 @@ import styled from 'styled-components'
 import { useNavigate } from 'react-router-dom'
 
 import { useTranslation } from '@/i18n'
-import { Button, HomeButton } from '@/components/base'
+import { Button } from '@/components/base'
+import attentionIcon from '@img/attention.svg'
 
 interface Props {
   children: ReactNode
@@ -30,6 +31,7 @@ export const useVersion = () => useContext(VersionContext)
 const SelectVersion: FC<Props> = ({ children }) => {
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
+  const isEn = i18n.language === 'en-US'
   const [version, setVersion] = useState<Version>('')
 
   const onSelectV1 = useCallback(() => setVersion('v1'), [])
@@ -55,14 +57,23 @@ const SelectVersion: FC<Props> = ({ children }) => {
     <Wrapper>
       <Main>
         <Title>{t('selectVersion.title')}</Title>
-        <Desc lang={i18n.language}>{t('selectVersion.desc')}</Desc>
+        <AlertDesc>
+          <img src={attentionIcon} width={16} height={16} />
+          <Desc>{t('selectVersion.desc')}</Desc>
+        </AlertDesc>
         <ButtonGroup>
-          <HomeButton onClick={onSelectV1}>
-            {t('selectVersion.v1Btn')}
-          </HomeButton>
-          <HomeButton onClick={onSelectV2}>
-            {t('selectVersion.v2Btn')}
-          </HomeButton>
+          <VersionButton $isEn={isEn} onClick={onSelectV1}>
+            <span className="version-title">
+              {t('selectVersion.v1BtnTitle')}
+            </span>
+            <span className="version-desc">{t('selectVersion.v1BtnDesc')}</span>
+          </VersionButton>
+          <VersionButton $isEn={isEn} onClick={onSelectV2}>
+            <span className="version-title">
+              {t('selectVersion.v2BtnTitle')}
+            </span>
+            <span className="version-desc">{t('selectVersion.v2BtnDesc')}</span>
+          </VersionButton>
         </ButtonGroup>
       </Main>
       <PrevBtnWrapper>
@@ -73,7 +84,7 @@ const SelectVersion: FC<Props> = ({ children }) => {
 }
 
 const Wrapper = styled.div`
-  padding: 40px;
+  padding: 30px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -81,36 +92,66 @@ const Wrapper = styled.div`
 `
 
 const Main = styled.div`
-  padding: 60px 24px;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
 `
 
 const Title = styled.h3`
-  font-size: 12px;
-  line-height: 20px;
-  color: #000;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: normal;
+  color: var(--color-Neutral-20);
+`
+
+const AlertDesc = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+
+  img {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
 `
 
 const Desc = styled.p`
   font-size: 12px;
   line-height: 20px;
-  color: #e97207;
-  margin-bottom: 50px;
-
-  &[lang='en-US'] {
-    line-height: 14px;
-  }
+  color: var(--color-Auxiliary-Yellow-1);
 `
 
 const ButtonGroup = styled.div`
   display: flex;
-  justify-content: space-between;
-  padding: 0 36px;
+  justify-content: center;
+  gap: 40px;
+`
 
-  div {
-    justify-content: center;
-    padding-left: 0;
-    width: 220px;
+const VersionButton = styled.div<{ $isEn?: boolean }>`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 30px;
+  border-radius: 12px;
+  background-color: ${({ theme }) => theme.color.brand};
+  color: white;
+  cursor: pointer;
+  min-width: ${({ $isEn }) => $isEn ? '210px' : '120px'};
+
+  .version-title {
+    font-size: 18px;
+    font-weight: 500;
+    line-height: 18px;
+  }
+
+  .version-desc {
+    font-size: 14px;
+    line-height: 14px;
   }
 `
 

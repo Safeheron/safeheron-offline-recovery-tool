@@ -37,54 +37,67 @@ const CommonSideStep: FC<Props> = ({ stepIndex, stepList, title, desc }) => {
 
 const Wrapper = styled.div`
   background-color: ${({ theme }) => theme.color.bg};
-  width: 233px;
+  width: 282px;
   height: 100%;
-  padding-left: 20px;
-  padding-right: 10px;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
 
   .header {
-    padding-top: 27px;
     h1 {
       font-weight: 500;
-      color: black;
-      font-size: 12px;
-      letter-spacing: 1px;
+      color: #292c33;
+      font-size: 16px;
       padding-bottom: 4px;
+      line-height: 22px;
     }
 
     p {
-      font-size: 12px;
-      margin-top: 4px;
+      font-size: 14px;
+      color: var(--color-Neutral-60);
+      font-weight: normal;
     }
   }
 
   .step-list {
-    margin-top: 40px;
-    font-size: 12px;
+    margin-top: 72px;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 16px;
 
     li {
       display: flex;
-      margin-bottom: 20px;
+      color: #849099;
+      line-height: 20px;
 
       &::before {
         content: '';
         width: 6px;
         height: 6px;
-        background-color: #d6d6d6;
+        background-color: var(--color-Neutral-60);
         border-radius: 50%;
-        margin-right: 8px;
-        margin-top: 5px;
+        margin-right: 7px;
+        margin-top: 7px;
+        flex-shrink: 0;
       }
       span {
         flex: 1;
       }
 
       &.active {
-        font-weight: 500;
+        color: var(--color-Neutral-20);
         &::before {
           background-color: ${({ theme }) => theme.color.primary};
         }
       }
+    }
+  }
+
+  &.en-US {
+    .step-list {
+      margin-top: 40px;
     }
   }
 `

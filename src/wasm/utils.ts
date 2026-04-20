@@ -1,3 +1,5 @@
+import { isDev } from '@/utils/env'
+
 export const stringToUint8Array = (str: string) => {
   const arr: number[] = []
   for (let i = 0, j = str.length; i < j; ++i) {
@@ -56,7 +58,7 @@ export const getInvokeWasmMethod = (wasmInstance: any) => <T extends string>(met
   outputPtrBuffer.set(int32ToUint8Array(0))
   outLenBuff.set(int32ToUint8Array(0))
 
-  console.time(`[Execute WASM]:(${method})`)
+  if (isDev) console.time(`[Execute WASM]:(${method})`)
   if (Number.isInteger(params)) {
     wasmInvokeResult = wasmInstance[method](
       params,
@@ -92,19 +94,26 @@ export const getInvokeWasmMethod = (wasmInstance: any) => <T extends string>(met
       console.error('[WASM ERROR]: ', error)
     }
   }
-  console.timeEnd(`[Execute WASM]:(${method})`)
-  console.log(`WASM [${method}] execute result: ${wasmInvokeResult}`)
+  if (isDev) {
+    console.timeEnd(`[Execute WASM]:(${method})`)
+    console.log(`WASM [${method}] execute result: ${wasmInvokeResult}`)
+  }
 
   // some method only return 0 for success, otherwise return other code
   if (plainOutput) {
     return wasmInvokeResult === 0
   }
 
-  const outLen = uint8ArrayToInt32(outLenBuff)
+  // Re-derive views from CURRENT HEAPU8.buffer. Emscripten's heap can grow
+  // during the WASM call (memory.grow), which detaches the old ArrayBuffer
+  // and invalidates every Uint8Array view created before the call. Reading
+  // from detached views silently yields zeros — empirically caused random
+  // rows to output empty addresses under concurrent loads.
+  const currentHeap = wasmInstance.HEAPU8.buffer
+  const outLen = uint8ArrayToInt32(new Uint8Array(currentHeap, outLenPtr, 4))
+  const outputMemoryPtr = uint8ArrayToInt32(new Uint8Array(currentHeap, outputPtr, 4))
 
-  const outputMemoryPtr = uint8ArrayToInt32(outputPtrBuffer)
-
-  const outputBuffer = new Uint8Array(wasmInstance.HEAPU8.buffer, outputMemoryPtr, outLen)
+  const outputBuffer = new Uint8Array(currentHeap, outputMemoryPtr, outLen)
 
   const outJsonString = uint8ArrayToString(outputBuffer, outLen)
 

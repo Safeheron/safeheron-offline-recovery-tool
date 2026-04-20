@@ -13,7 +13,7 @@ module.exports = {
     clean: true,
     path: path.resolve(__dirname, 'dist'),
     filename: '[name].[contenthash].js',
-    pathinfo: true,
+    pathinfo: isDev,
   },
   devtool: isDev ? 'eval-source-map' : false,
   target: 'web',

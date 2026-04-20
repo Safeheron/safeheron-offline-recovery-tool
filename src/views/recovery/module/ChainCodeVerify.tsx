@@ -1,4 +1,5 @@
 import { ChangeEvent, FC, useState } from 'react'
+import styled from 'styled-components'
 
 import { Button, Input } from '@/components/base'
 import ErrorMsg from '@/components/ErrorMsg'
@@ -37,8 +38,8 @@ const ChainCodeVerify: FC<Props> = ({ next, prev, onComplete }) => {
 
   return (
     <>
-      <div className="content">
-        <p>{t('Verify.ChainCodeVerify.title')}</p>
+      <div className="content" style={{ marginTop: 156 }}>
+        <Title>{t('Verify.ChainCodeVerify.title')}</Title>
         <div className="form-item">
           <Input
             onChange={handleChange}
@@ -60,5 +61,14 @@ const ChainCodeVerify: FC<Props> = ({ next, prev, onComplete }) => {
     </>
   )
 }
+
+const Title = styled.p`
+  color: var(--color-Neutral-20);
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: normal;
+  margin-bottom: 16px;
+`
 
 export default ChainCodeVerify

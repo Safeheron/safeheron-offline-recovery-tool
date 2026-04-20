@@ -6,6 +6,7 @@ import PrivateKeyVerify, { PubKeyShare } from '@/views/verify/module/PrivateKeyV
 import XPubVerify from '@/views/verify/module/XPubVerify'
 import { useVersion, withSelectVersion } from '@/components/SelectVersion'
 import { useTranslation } from '@/i18n'
+import { isDev } from '@/utils/env'
 
 const MnemonicVerify = () => {
   const { t } = useTranslation()
@@ -36,7 +37,11 @@ const MnemonicVerify = () => {
       setSecp256k1PubKey(secp256k1)
       next()
     } catch (error) {
-      console.error('[GEN XPUB ERROR]:', error)
+      if (isDev) {
+        console.error('[GEN XPUB ERROR]:', error)
+      } else {
+        console.error('[GEN XPUB ERROR]: xpub aggregation failed (details redacted)')
+      }
       const k = isFullChainCode ? 'Verify.XPubVerify.error' : 'Verify.XPubVerify.errorV2'
       message.error(t(k), 6)
     }

@@ -212,3 +212,19 @@ test('Liquid address derivation', async () => {
 
   expect(derivedAddress.sort()).toEqual(expectedDerivedAddressList.sort())
 })
+
+test('Near address derivation', () => {
+  const pubkeyHex =
+    '3a5c1615c31b1c129a9bb594f68ffe15cdaa9de52f4f379e8cb5928e58cbdb4a'
+  const [addr] = blockchainUtil.near.derivedAddress(pubkeyHex)
+  expect(addr).toEqual(pubkeyHex)
+})
+
+test('TON address derivation', () => {
+  const pubkeyHex =
+    '3a5c1615c31b1c129a9bb594f68ffe15cdaa9de52f4f379e8cb5928e58cbdb4a'
+  const [mainnet, testnet] = blockchainUtil.ton.derivedAddress(pubkeyHex)
+  expect(mainnet).toBeTruthy()
+  expect(testnet).toBeTruthy()
+  expect(mainnet).not.toEqual(testnet)
+})

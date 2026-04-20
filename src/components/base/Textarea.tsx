@@ -3,12 +3,12 @@ import styled from 'styled-components'
 const Textarea = styled.textarea`
   display: flex;
   width: 100%;
-  font-size: 12px;
+  font-size: 14px;
   align-items: center;
-  padding: 12px;
-  line-height: 17px;
+  padding: 12px 14px;
+  line-height: 20px;
   border: 1px solid var(--border-color);
-  border-radius: 5px;
+  border-radius: 12px;
   outline: none;
   color: var(--text-color);
 
@@ -18,7 +18,8 @@ const Textarea = styled.textarea`
   }
 
   &::placeholder {
-    color: #abb8b8;
+    font-size: 14px;
+    color: var(--color-Neutral-70);
   }
 `
 

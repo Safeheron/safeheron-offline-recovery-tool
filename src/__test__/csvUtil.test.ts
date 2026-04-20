@@ -1,6 +1,6 @@
 import { expect, test } from '@jest/globals'
 
-import { csvParse, csvStringify, MissDataError, MissRequiredFieldError, UnsupportBlockChainError } from '../utils/csv'
+import { csvParse, csvStringify, sanitizeCsvValue, MissDataError, MissRequiredFieldError, UnsupportBlockChainError } from '../utils/csv'
 
 const csvStrWithWhitespace =
 `Account Name,Blockchain Type,Network,Address,Address Type,HD Path
@@ -134,4 +134,28 @@ test('the missing required field csv string should report an error', () => {
 test('the unsupport chaincode value csv string should report an error', () => {
   expect(() => csvParse(unsupportBlockchainCsvStr)).toThrowError(UnsupportBlockChainError)
   expect(() => csvParse(unsupportBlockchainCsvStr)).toThrowError('Cosmos | Kcc')
+})
+
+describe('sanitizeCsvValue', () => {
+  test('returns non-string values as-is', () => {
+    expect(sanitizeCsvValue(123)).toBe(123)
+    expect(sanitizeCsvValue(null)).toBe(null)
+    expect(sanitizeCsvValue(undefined)).toBe(undefined)
+    expect(sanitizeCsvValue('')).toBe('')
+  })
+
+  test('prefixes formula-like strings with single quote', () => {
+    expect(sanitizeCsvValue('=cmd')).toBe("'=cmd")
+    expect(sanitizeCsvValue('+SUM(A1)')).toBe("'+SUM(A1)")
+    expect(sanitizeCsvValue('-data')).toBe("'-data")
+    expect(sanitizeCsvValue('@evil')).toBe("'@evil")
+    expect(sanitizeCsvValue('\tevil')).toBe("'\tevil")
+    expect(sanitizeCsvValue('\revil')).toBe("'\revil")
+  })
+
+  test('returns normal strings unchanged', () => {
+    expect(sanitizeCsvValue('hello')).toBe('hello')
+    expect(sanitizeCsvValue('m/44/666/0/0/0')).toBe('m/44/666/0/0/0')
+    expect(sanitizeCsvValue('Bitcoin')).toBe('Bitcoin')
+  })
 })

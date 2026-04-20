@@ -1,6 +1,7 @@
 import { describe, expect, test } from '@jest/globals'
 
-import { recoverHDKeyFromMnemonics } from '../utils/mpc'
+import { recoverHDKeyFromMnemonics, recoverDerivedCSV, createDeriveCache, ValidateAddressError, LRUMap } from '../utils/mpc'
+import type { RawCSVRow } from '../utils/mpc'
 import { padToLength } from '../utils/common'
 
 const mnemonics = [
@@ -115,5 +116,143 @@ describe('Recover HDkey from mnemonics', () => {
       const childPrivKeyHex = padToLength(childHDKey.privateKey.toString(16), 32)
       expect(childPrivKeyHex).toEqual(rItem.privateKey)
     })
+  })
+})
+
+describe('createDeriveCache', () => {
+  test('returns object with empty Maps', () => {
+    const cache = createDeriveCache()
+    expect(cache.parentKeyCache).toBeInstanceOf(Map)
+    expect(cache.childKeyCache).toBeInstanceOf(Map)
+    expect(cache.parentKeyCache.size).toBe(0)
+    expect(cache.childKeyCache.size).toBe(0)
+  })
+})
+
+describe('recoverDerivedCSV', () => {
+  const hdKey = recoverHDKeyFromMnemonics(mnemonics, chaincode)
+
+  const makeRow = (path: string, algo: string, blockchain = 'EVM'): RawCSVRow => ({
+    'HD Path': path,
+    'Blockchain Type': blockchain,
+    Network: 'mainnet',
+    Address: '',
+    'Address Type': 'DEFAULT',
+    Algorithm: algo,
+  })
+
+  test('returns correct number of rows', () => {
+    const rows: RawCSVRow[] = [
+      makeRow('m/44/666/0/0/0', 'secp256k1'),
+      makeRow('m/44/666/1/0/0', 'secp256k1'),
+    ]
+    const result = recoverDerivedCSV(rows, hdKey)
+    expect(result).toHaveLength(2)
+  })
+
+  test('result rows have Public Key and Private Key', () => {
+    const rows: RawCSVRow[] = [makeRow('m/44/666/0/0/0', 'secp256k1')]
+    const result = recoverDerivedCSV(rows, hdKey)
+    expect(result[0]['Public Key']).toBeTruthy()
+    expect(result[0]['Private Key']).toBeTruthy()
+  })
+
+  test('Private Key matches known fixture', () => {
+    const rows: RawCSVRow[] = [makeRow('m/44/666/0/0/0', 'secp256k1')]
+    const result = recoverDerivedCSV(rows, hdKey)
+    expect(result[0]['Private Key']).toBe(recovery[0].privateKey)
+  })
+
+  test('derives Address when input is empty', () => {
+    const rows: RawCSVRow[] = [makeRow('m/44/666/0/0/0', 'secp256k1')]
+    const result = recoverDerivedCSV(rows, hdKey)
+    expect(result[0].Address).toBeTruthy()
+    expect(result[0].Address.startsWith('0x')).toBe(true)
+  })
+
+  test('cache produces identical results', () => {
+    const cache = createDeriveCache()
+    const rows: RawCSVRow[] = [makeRow('m/44/666/0/0/0', 'secp256k1')]
+    const result1 = recoverDerivedCSV(rows, hdKey, cache)
+    const result2 = recoverDerivedCSV(rows, hdKey, cache)
+    expect(result1).toEqual(result2)
+    expect(cache.parentKeyCache.size).toBeGreaterThan(0)
+    expect(cache.childKeyCache.size).toBeGreaterThan(0)
+  })
+
+  test('throws ValidateAddressError for wrong address', () => {
+    const rows: RawCSVRow[] = [{
+      'HD Path': 'm/44/666/0/0/0',
+      'Blockchain Type': 'EVM',
+      Network: 'mainnet',
+      Address: '0x0000000000000000000000000000000000000000',
+      'Address Type': 'DEFAULT',
+      Algorithm: 'secp256k1',
+    }]
+    expect(() => recoverDerivedCSV(rows, hdKey)).toThrow(ValidateAddressError)
+  })
+})
+
+describe('LRUMap', () => {
+  test('is instanceof Map', () => {
+    const lru = new LRUMap(3)
+    expect(lru).toBeInstanceOf(Map)
+  })
+
+  test('get and set work like Map', () => {
+    const lru = new LRUMap<string, number>(10)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    expect(lru.get('a')).toBe(1)
+    expect(lru.get('b')).toBe(2)
+    expect(lru.get('c')).toBeUndefined()
+    expect(lru.size).toBe(2)
+  })
+
+  test('evicts oldest entry when over capacity', () => {
+    const lru = new LRUMap<string, number>(3)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    lru.set('c', 3)
+    // Full — next insert evicts oldest ('a')
+    lru.set('d', 4)
+    expect(lru.size).toBe(3)
+    expect(lru.get('a')).toBeUndefined()
+    expect(lru.get('b')).toBe(2)
+    expect(lru.get('d')).toBe(4)
+  })
+
+  test('get refreshes recency so entry is not evicted', () => {
+    const lru = new LRUMap<string, number>(3)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    lru.set('c', 3)
+    // Touch 'a' — now 'b' is oldest
+    lru.get('a')
+    lru.set('d', 4)
+    expect(lru.get('a')).toBe(1) // survived
+    expect(lru.get('b')).toBeUndefined() // evicted
+  })
+
+  test('set on existing key updates value and refreshes recency', () => {
+    const lru = new LRUMap<string, number>(3)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    lru.set('c', 3)
+    // Update 'a' — now 'b' is oldest
+    lru.set('a', 100)
+    lru.set('d', 4)
+    expect(lru.get('a')).toBe(100)
+    expect(lru.get('b')).toBeUndefined()
+    expect(lru.size).toBe(3)
+  })
+
+  test('capacity 1 always holds only the last entry', () => {
+    const lru = new LRUMap<string, number>(1)
+    lru.set('a', 1)
+    lru.set('b', 2)
+    expect(lru.size).toBe(1)
+    expect(lru.get('a')).toBeUndefined()
+    expect(lru.get('b')).toBe(2)
   })
 })
