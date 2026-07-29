@@ -14,7 +14,7 @@ export const openMnemonicToKeyWindow = (version: string) => {
     url: `#/mnemonicToKey?version=${version}`,
     title: '',
     width: 500,
-    height: version === 'v1' ? 540 : 440,
+    height: version === 'v1' ? 620 : 520,
     resizable: false,
   })
 

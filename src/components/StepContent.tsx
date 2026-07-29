@@ -15,24 +15,23 @@ const Wrapper = styled.div`
   overflow: hidden;
 
   .content {
-    padding: 0 34px;
+    padding: 0 30px;
     flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: center;
 
     .form-item {
       position: relative;
       padding-bottom: 27px;
     }
     & > p {
-      font-size: 12px;
-      padding: 10px 0;
+      font-size: 14px;
+      line-height: 26px;
     }
   }
 
   .step-buttons {
-    padding: 40px 0;
+    padding: 20px 0;
     padding-right: 30px;
     display: flex;
     justify-content: flex-end;
@@ -41,7 +40,7 @@ const Wrapper = styled.div`
   &.en-US {
     .content {
       & > p {
-        line-height: 18px;
+        line-height: 20px;
       }
     }
   }

@@ -18,7 +18,10 @@ const Description: FC<Props> = ({ next }) => {
     setChecked(e.target.checked)
   }, [])
 
-  const k = version === 'v2' ? 'Recovery.Description.descV2' : 'Recovery.Description.desc'
+  const k =
+    version === 'v2'
+      ? 'Recovery.Description.descV2'
+      : 'Recovery.Description.desc'
 
   return (
     <>
@@ -40,10 +43,10 @@ const Description: FC<Props> = ({ next }) => {
 }
 
 const Content = styled.div`
+  margin-top: 131px;
+
   p {
-    font-size: 12px;
-    line-height: 26px;
-    margin-bottom: 10px;
+    margin-bottom: 20px;
   }
 `
 

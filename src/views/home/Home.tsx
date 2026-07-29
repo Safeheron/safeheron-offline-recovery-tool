@@ -4,9 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { HomeButton } from '@/components/base/Button'
 import { useTranslation, LanguageEnum, LanguageMap, LANGUAGE_KEY } from '@/i18n'
 import { emitMnemonicToKeyWindow } from '@/utils/mnemonicToKeyWindow'
-import mnemonic from '@img/mnemonic@2x.png'
-import recover from '@img/recover@2x.png'
-import arrow from '@img/arrow@2x.png'
+import translateIcon from '@img/translate.svg'
 
 const Home = () => {
   const navigate = useNavigate()
@@ -20,77 +18,131 @@ const Home = () => {
 
   return (
     <Wrapper>
-      <div className="change-lang">
-        <div className="lang">
-          <span>{LanguageMap[i18n.language]}</span>
-          <img src={arrow} alt="" />
+      <div className="lang-section">
+        <div className="change-lang">
+          <div className="lang-btn">
+            <div className="translate-icon" />
+            <span>{LanguageMap[i18n.language]}</span>
+          </div>
+          <ul className="lang-list">
+            {Object.values(LanguageEnum).map(v => (
+              <li key={v} onClick={() => changeLang(v)}>
+                {LanguageMap[v]}
+              </li>
+            ))}
+          </ul>
         </div>
-        <ul className="lang-list">
-          {Object.values(LanguageEnum).map(v => (
-            <li key={v} onClick={() => changeLang(v)}>
-              {LanguageMap[v]}
-            </li>
-          ))}
-        </ul>
       </div>
-      <HomeButton className={i18n.language} onClick={() => navigate('/verify')}>
-        <div className="icon">
-          <img src={mnemonic} width="21" />
+      <div className="btn-section">
+        <div className="btn-group">
+          <HomeButton onClick={() => navigate('/verify')}>
+            <span>{t('home.verify')}</span>
+          </HomeButton>
+          <HomeButton onClick={() => navigate('/recovery')}>
+            <span>{t('home.recovery')}</span>
+          </HomeButton>
         </div>
-        <span>{t('home.verify')}</span>
-      </HomeButton>
-      <HomeButton
-        className={i18n.language}
-        onClick={() => navigate('/recovery')}
-      >
-        <div className="icon" style={{ padding: '0 3px' }}>
-          <img src={recover} width="16" />
-        </div>
-        <span>{t('home.recovery')}</span>
-      </HomeButton>
+      </div>
     </Wrapper>
   )
 }
 
 const Wrapper = styled.div`
   height: 100%;
-  background: url(${({ theme }) => theme.img.bg}) bottom right no-repeat;
-  padding: 155px 75px 0;
+  background: url(${({ theme }) => theme.img.bg}) top right no-repeat;
+  display: flex;
+  flex-direction: column;
+  padding: 0 60px;
 
-  position: relative;
+  .lang-section {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 20px 0;
+    flex-shrink: 0;
+  }
+
+  .btn-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+  }
+
+  .btn-group {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
   .change-lang {
-    font-size: 12px;
-    position: absolute;
-    right: 26px;
-    top: 14px;
+    font-size: 14px;
     cursor: pointer;
+    position: relative;
 
-    .lang {
+    .lang-btn {
       display: flex;
       align-items: center;
-      justify-content: center;
-      height: 17px;
-      img {
-        width: 10px;
-        margin-left: 6px;
+      gap: 6px;
+      padding: 8px 18px;
+      border: 1px solid var(--color-Neutral-90);
+      border-radius: 50px;
+      background: white;
+      height: 38px;
+      color: var(--color-Neutral-20);
+      transition: border-color 0.2s, color 0.2s;
+
+      &:hover {
+        border-color: ${({ theme }) => theme.color.brand};
+        color: ${({ theme }) => theme.color.brand};
+
+        .translate-icon {
+          background-color: ${({ theme }) => theme.color.brand};
+        }
+      }
+
+      .translate-icon {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+        background-color: var(--color-Neutral-20);
+        -webkit-mask: url(${translateIcon}) center / contain no-repeat;
+        mask: url(${translateIcon}) center / contain no-repeat;
+        transition: background-color 0.2s;
       }
     }
 
     .lang-list {
-      transition: 0.3s;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      transition: opacity 0.3s;
       opacity: 0;
-      margin-top: 9px;
-      text-align: center;
-      border-radius: 2px;
-      border: 1px solid #eaeaea;
+      pointer-events: none;
+      margin-top: 6px;
+      border-radius: 12px;
       background-color: white;
+      box-shadow: 0px 4px 14.3px 2px rgba(30, 41, 47, 0.08);
+      padding: 4px;
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: -6px;
+        left: 0;
+        right: 0;
+        height: 6px;
+      }
 
       li {
-        min-width: 76px;
-        line-height: 24px;
+        padding: 10px 20px;
+        border-radius: 10px;
+        white-space: nowrap;
+        transition: background-color 0.2s;
 
         &:hover {
-          background-color: ${({ theme }) => theme.color.hover};
+          background-color: var(--color-Neutral-97);
         }
       }
     }
@@ -98,6 +150,7 @@ const Wrapper = styled.div`
     &:hover {
       .lang-list {
         opacity: 1;
+        pointer-events: auto;
       }
     }
   }

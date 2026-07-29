@@ -1,3 +1,4 @@
+/* eslint-disable max-classes-per-file */
 import {
   MasterKeyPair,
   MasterKeyShare,
@@ -9,6 +10,7 @@ import { Secp256k1HDKey, Ed25519HDKey } from '@safeheron/crypto-bip32'
 import { mnemonicToEntropy } from 'bip39'
 
 import blockchainUtil from './blockchain'
+import { UnsupportBlockChainError } from './csv'
 import {
   padToLength,
   toCompressedPubKeyHex,
@@ -18,7 +20,8 @@ import {
   CSV_FIELD_BLOCKCHAIN,
   CSV_FIELD_NETWORK,
   CSV_FIELD_ADDRESS,
-  CSV_REQUIRED_FIELD,
+  CSV_FIELD_ADDR_TYPE,
+  CSV_FIELD_HD_PATH,
   CSV_FIELD_PRIVATE_KEY,
   CSV_FIELD_PUBLIC_KEY,
   CSV_FIELD_ALGO,
@@ -51,11 +54,13 @@ export interface MultiAlgoHDKey {
 }
 
 export interface RawCSVRow {
-  [CSV_REQUIRED_FIELD]: string
+  [key: string]: string
+  [CSV_FIELD_HD_PATH]: string
   [CSV_FIELD_NETWORK]: string
   [CSV_FIELD_ADDRESS]: string
+  [CSV_FIELD_ADDR_TYPE]: string
   [CSV_FIELD_ALGO]: string
-  [CSV_FIELD_BLOCKCHAIN]: SUPPORTED_BLOCKCHAIN_TYPE
+  [CSV_FIELD_BLOCKCHAIN]: string
 }
 
 export interface DerivedCSVRow extends RawCSVRow {
@@ -127,88 +132,198 @@ const isDoge = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
 
 export class ValidateAddressError extends Error {}
 
+/**
+ * Select the single correct address from the deriveAddresses result array
+ * based on chain type, address type, and network.
+ */
+const selectAddress = (
+  chainType: SUPPORTED_BLOCKCHAIN_TYPE,
+  derived: string[],
+  addrType: string,
+  network: string,
+): string => {
+  const isMainnet = network === 'mainnet'
+  switch (chainType) {
+    case BITCOIN_CHAIN:
+    case BITCOIN_TEST_CHAIN:
+      // [p2wpkh_mainnet, p2wpkh_testnet, p2pkh_testnet, p2pkh_mainnet]
+      if (addrType === 'P2WPKH') return derived[isMainnet ? 0 : 1]
+      return derived[isMainnet ? 3 : 2]
+    case BITCOIN_CASH_CHAIN:
+      // [legacyP2PKH, cashAddr]
+      return addrType === 'P2PKH_CASH' ? derived[1] : derived[0]
+    case LTC_CHAIN:
+    case LTC_TEST_CHAIN:
+      // [p2pkhTestnet, p2wpkhTestnet, p2pkhMainnet, p2wpkhMainnet]
+      if (addrType === 'P2WPKH') return derived[isMainnet ? 3 : 1]
+      return derived[isMainnet ? 2 : 0]
+    case DOGE_CHAIN:
+    case DOGE_TEST_CHAIN:
+      // [p2pkhTestnet, p2pkhMainnet]
+      return derived[isMainnet ? 1 : 0]
+    case LIQUID_CHAIN:
+    case LIQUID_TEST_CHAIN:
+      // [p2pkhTestnet, p2pkhMainnet, p2wpkhTestnet, p2pwkhMainnet]
+      if (addrType === 'P2WPKH') return derived[isMainnet ? 3 : 2]
+      return derived[isMainnet ? 1 : 0]
+    case TON_CHAIN:
+      // [mainnet, testnet]
+      return derived[0]
+    case TON_TEST_CHAIN:
+    case TON_TEST_CHAIN_ALIAS:
+      // [mainnet, testnet]
+      return derived[1]
+    default:
+      return derived[0]
+  }
+}
+
+const deriveAddresses = (
+  chainType: SUPPORTED_BLOCKCHAIN_TYPE,
+  publicKeyPoint: any,
+  pubhex: string,
+): string[] => {
+  switch (chainType) {
+    case EVM_CHAIN:
+      return blockchainUtil.ethereum.derivedAddress(pubhex)
+    case BITCOIN_CHAIN:
+    case BITCOIN_TEST_CHAIN:
+      return blockchainUtil.bitcoin.derivedAddress(pubhex)
+    case BITCOIN_CASH_CHAIN:
+      return blockchainUtil.bitcoincash.derivedAddress(pubhex)
+    case DOGE_CHAIN:
+    case DOGE_TEST_CHAIN:
+      return blockchainUtil.doge.derivedAddress(pubhex)
+    case LTC_CHAIN:
+    case LTC_TEST_CHAIN:
+      return blockchainUtil.ltc.derivedAddress(pubhex)
+    case DASH_CHAIN:
+      return blockchainUtil.dash.derivedAddress(pubhex)
+    case TRON_CHAIN:
+      return blockchainUtil.tron.derivedAddress(
+        toUncompressedPubKeyHex(publicKeyPoint)
+      )
+    case NEAR_CHAIN:
+      return blockchainUtil.near.derivedAddress(pubhex)
+    case FIL_CHAIN:
+      return blockchainUtil.filecoin.derivedAddress(
+        toUncompressedPubKeyHex(publicKeyPoint)
+      )
+    case SUI_CHAIN:
+      return blockchainUtil.sui.derivedAddress(pubhex)
+    case APTOS_CHAIN:
+      return blockchainUtil.aptos.derivedAddress(pubhex)
+    case SOLANA_CHAIN:
+      return blockchainUtil.solana.derivedAddress(pubhex)
+    case TON_CHAIN:
+    case TON_TEST_CHAIN:
+    case TON_TEST_CHAIN_ALIAS:
+      return blockchainUtil.ton.derivedAddress(pubhex)
+    case LIQUID_CHAIN:
+    case LIQUID_TEST_CHAIN:
+      return blockchainUtil.liquid.derivedAddress(pubhex)
+    default:
+      // Reached when a row's Blockchain Type isn't in SUPPORTED_BLOCKCHAIN.
+      // Backstop check — the worker's parseCsvLine also rejects unsupported chains.
+      throw new UnsupportBlockChainError(String(chainType))
+  }
+}
+
 const validateAddress = (
   chainType: SUPPORTED_BLOCKCHAIN_TYPE,
   publicKeyPoint: any,
   pubhex: string,
   address: string,
-  row: number
 ) => {
-  let derivedAddress: string[] = []
-  let newAddress = address
-  switch (chainType) {
-    case EVM_CHAIN:
-      newAddress = address.toLowerCase()
-      derivedAddress = blockchainUtil.ethereum
-        .derivedAddress(pubhex)
-        .map((add: string) => add.toLowerCase())
-      break
-    case BITCOIN_CHAIN:
-    case BITCOIN_TEST_CHAIN:
-      derivedAddress = blockchainUtil.bitcoin.derivedAddress(pubhex)
-      break
-    case BITCOIN_CASH_CHAIN:
-      derivedAddress = blockchainUtil.bitcoincash.derivedAddress(pubhex)
-      break
-    case DOGE_CHAIN:
-    case DOGE_TEST_CHAIN:
-      derivedAddress = blockchainUtil.doge.derivedAddress(pubhex)
-      break
-    case LTC_CHAIN:
-    case LTC_TEST_CHAIN:
-      derivedAddress = blockchainUtil.ltc.derivedAddress(pubhex)
-      break
-    case DASH_CHAIN:
-      derivedAddress = blockchainUtil.dash.derivedAddress(pubhex)
-      break
-    case TRON_CHAIN:
-      derivedAddress = blockchainUtil.tron.derivedAddress(
-        toUncompressedPubKeyHex(publicKeyPoint)
-      )
-      break
-    case NEAR_CHAIN:
-      derivedAddress = blockchainUtil.near.derivedAddress(pubhex)
-      break
-    case FIL_CHAIN:
-      derivedAddress = blockchainUtil.filecoin.derivedAddress(
-        toUncompressedPubKeyHex(publicKeyPoint)
-      )
-      break
-    case SUI_CHAIN:
-      derivedAddress = blockchainUtil.sui.derivedAddress(pubhex)
-      break
-    case APTOS_CHAIN:
-      derivedAddress = blockchainUtil.aptos.derivedAddress(pubhex)
-      break
-    case SOLANA_CHAIN:
-      derivedAddress = blockchainUtil.solana.derivedAddress(pubhex)
-      break
-    case TON_CHAIN:
-    case TON_TEST_CHAIN:
-    case TON_TEST_CHAIN_ALIAS:
-      derivedAddress = blockchainUtil.ton.derivedAddress(pubhex)
-      break
-    case LIQUID_CHAIN:
-    case LIQUID_TEST_CHAIN:
-      derivedAddress = blockchainUtil.liquid.derivedAddress(pubhex)
-      break
-    default:
-      break
-  }
-  if (!derivedAddress.includes(newAddress)) {
-    const msg = `derived address: ${JSON.stringify(
-      derivedAddress
-    )}, expected address: ${newAddress}`
+  const derived = deriveAddresses(chainType, publicKeyPoint, pubhex)
+  if (chainType === EVM_CHAIN) {
+    const match = derived.some(d => d.toLowerCase() === address.toLowerCase())
+    if (!match) {
+      const msg = `derived address: ${JSON.stringify(derived)}, expected address: ${address}`
+      throw new ValidateAddressError(msg)
+    }
+  } else if (!derived.includes(address)) {
+    const msg = `derived address: ${JSON.stringify(derived)}, expected address: ${address}`
     throw new ValidateAddressError(msg)
+  }
+}
+
+/**
+ * Parse HD path "m/44/666/3/0/5" into parent path "m/44/666/3/0" and last index 5.
+ * Used for intermediate path caching: derive parent once, then deriveChild for each address.
+ */
+function splitPath(path: string): { parentPath: string; lastIndex: number } {
+  const lastSlash = path.lastIndexOf('/')
+  return {
+    parentPath: path.slice(0, lastSlash),
+    lastIndex: parseInt(path.slice(lastSlash + 1), 10),
+  }
+}
+
+/**
+ * Map subclass that evicts the least-recently-used entry when over capacity.
+ * On `get`, hit entries are moved to the end (most recent). On `set`, if the
+ * map is full the oldest entry is evicted before the new one is inserted.
+ *
+ * Extends Map so existing tests (`instanceof Map`) and callers continue to
+ * work; only `get` and `set` are overridden to track recency.
+ */
+export class LRUMap<K, V> extends Map<K, V> {
+  private readonly maxEntries: number
+
+  constructor(maxEntries: number) {
+    super()
+    this.maxEntries = maxEntries
+  }
+
+  override get(key: K): V | undefined {
+    const value = super.get(key)
+    if (value !== undefined) {
+      // Refresh recency by deleting + re-inserting.
+      super.delete(key)
+      super.set(key, value)
+    }
+    return value
+  }
+
+  override set(key: K, value: V): this {
+    if (super.has(key)) {
+      super.delete(key)
+    } else if (super.size >= this.maxEntries) {
+      const oldestKey = super.keys().next().value
+      if (oldestKey !== undefined) super.delete(oldestKey)
+    }
+    return super.set(key, value)
+  }
+}
+
+// Cache sizes picked so per-worker cache stays ~10MB regardless of total rows.
+// Entry ≈ 700B; 10K + 5K entries ≈ 10MB.
+const CHILD_CACHE_MAX = 10_000
+const PARENT_CACHE_MAX = 5_000
+
+export interface DeriveCache {
+  parentKeyCache: Map<string, any>
+  childKeyCache: Map<string, { childKey: any; priv: string; compressedPubKey: string }>
+}
+
+export function createDeriveCache(): DeriveCache {
+  return {
+    parentKeyCache: new LRUMap(PARENT_CACHE_MAX),
+    childKeyCache: new LRUMap(CHILD_CACHE_MAX),
   }
 }
 
 export const recoverDerivedCSV = (
   csv: RawCSVRow[],
-  hdkey: MultiAlgoHDKey
+  hdkey: MultiAlgoHDKey,
+  cache?: DeriveCache
 ): DerivedCSVRow[] => {
-  const res = csv.map((item, index) => {
-    const path = item[CSV_REQUIRED_FIELD]
+  const parentKeyCache = cache?.parentKeyCache ?? new Map<string, any>()
+  const childKeyCache = cache?.childKeyCache ?? new Map<string, { childKey: any; priv: string; compressedPubKey: string }>()
+
+  const res = csv.map(item => {
+    const path = item[CSV_FIELD_HD_PATH]
     const network = item[CSV_FIELD_NETWORK]
     const address = item[CSV_FIELD_ADDRESS]
     const algo = item[CSV_FIELD_ALGO]
@@ -216,17 +331,40 @@ export const recoverDerivedCSV = (
       CSV_FIELD_BLOCKCHAIN
     ].toLowerCase() as SUPPORTED_BLOCKCHAIN_TYPE
 
+    const cacheKey = `${algo}:${path}`
     let childKey
     let priv
     let compressedPubKey
-    if (algo === 'ed25519') {
-      childKey = hdkey.ed25519.derive(path)
-      compressedPubKey = childKey.publicKeyAsHex
-      priv = childKey.privateKeyAsHex
+
+    const cached = childKeyCache.get(cacheKey)
+    if (cached) {
+      childKey = cached.childKey
+      priv = cached.priv
+      compressedPubKey = cached.compressedPubKey
     } else {
-      childKey = hdkey.secp256k1.derive(path)
-      compressedPubKey = toCompressedPubKeyHex(childKey.publicKey)
-      priv = padToLength(childKey.privateKey.toString(16), 32)
+      const { parentPath, lastIndex } = splitPath(path)
+      const parentCacheKey = `${algo}:${parentPath}`
+
+      // Get or derive parent key
+      let parentKey = parentKeyCache.get(parentCacheKey)
+      if (!parentKey) {
+        parentKey = algo === 'ed25519'
+          ? hdkey.ed25519.derive(parentPath)
+          : hdkey.secp256k1.derive(parentPath)
+        parentKeyCache.set(parentCacheKey, parentKey)
+      }
+
+      // Derive only the last level from parent
+      childKey = parentKey.deriveChild(lastIndex)
+
+      if (algo === 'ed25519') {
+        compressedPubKey = childKey.publicKeyAsHex
+        priv = childKey.privateKeyAsHex
+      } else {
+        compressedPubKey = toCompressedPubKeyHex(childKey.publicKey)
+        priv = padToLength(childKey.privateKey.toString(16), 32)
+      }
+      childKeyCache.set(cacheKey, { childKey, priv, compressedPubKey })
     }
 
     let privateKey = priv
@@ -249,19 +387,31 @@ export const recoverDerivedCSV = (
       )
     }
 
-    validateAddress(
-      blockchain,
-      childKey.publicKey,
-      compressedPubKey,
-      address,
-      index + 2
-    )
-
-    return {
-      ...item,
-      'Private Key': privateKey,
-      'Public Key': compressedPubKey,
+    let outputAddress = address
+    if (address) {
+      validateAddress(
+        blockchain,
+        childKey.publicKey,
+        compressedPubKey,
+        address,
+      )
+    } else {
+      const derived = deriveAddresses(blockchain, childKey.publicKey, compressedPubKey)
+      outputAddress = selectAddress(blockchain, derived, item[CSV_FIELD_ADDR_TYPE], network)
     }
+
+    const result: Record<string, string> = {}
+    const accountName = (item as Record<string, string>)['Account Name']
+    if (accountName !== undefined) result['Account Name'] = accountName
+    result[CSV_FIELD_BLOCKCHAIN] = item[CSV_FIELD_BLOCKCHAIN]
+    result[CSV_FIELD_NETWORK] = network
+    result[CSV_FIELD_ADDRESS] = outputAddress
+    result[CSV_FIELD_ADDR_TYPE] = item[CSV_FIELD_ADDR_TYPE]
+    result[CSV_FIELD_HD_PATH] = path
+    result[CSV_FIELD_ALGO] = algo
+    result[CSV_FIELD_PUBLIC_KEY] = compressedPubKey
+    result[CSV_FIELD_PRIVATE_KEY] = privateKey
+    return result as unknown as DerivedCSVRow
   })
   return res
 }

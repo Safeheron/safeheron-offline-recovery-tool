@@ -64,25 +64,23 @@ const Wrapper = styled.div`
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 20px 30px 40px;
+  padding: 10px 30px 30px;
 
   header {
-    margin-bottom: 10px;
+    margin-bottom: 16px;
+
     h1 {
       font-size: 14px;
-      margin-bottom: 5px;
-      color: #000;
+      font-weight: 500;
+      margin-bottom: 4px;
+      color: var(--color-Neutral-20);
+      line-height: 20px;
     }
 
     p {
       font-size: 12px;
-      line-height: 20px;
-    }
-
-    &.en-US {
-      p {
-        line-height: 14px;
-      }
+      line-height: 17px;
+      color: var(--color-Neutral-60);
     }
   }
 
@@ -90,16 +88,18 @@ const Wrapper = styled.div`
     flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
+    gap: 10px;
 
     .form-item {
       position: relative;
-      padding-bottom: 27px;
     }
+
     p {
-      font-size: 12px;
+      font-size: 14px;
       font-weight: 500;
-      padding: 5px 0;
+      color: var(--color-Neutral-20);
+      padding: 0;
     }
   }
 

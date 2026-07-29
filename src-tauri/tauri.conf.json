@@ -1,7 +1,7 @@
 {
   "package": {
     "productName": "Offline Recovery Tool",
-    "version": "0.10.3"
+    "version": "0.11.0"
   },
   "build": {
     "distDir": "../dist",
@@ -49,11 +49,6 @@
         "create": true,
         "close": true,
         "setFocus": true
-      },
-      "fs": {
-        "readFile": true,
-        "writeFile": true,
-        "scope": []
       }
     },
     "windows": [

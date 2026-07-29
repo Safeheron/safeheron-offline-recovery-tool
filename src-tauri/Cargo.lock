@@ -66,6 +66,8 @@ checksum = "dcfed56ad506cb2c684a14971b8861fdc3baaaae314b9e5f9bb532cbe3ba7a4f"
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.2.15",
+ "once_cell",
  "serde",
  "serde_json",
  "tauri",

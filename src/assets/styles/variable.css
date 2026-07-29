@@ -1,8 +1,8 @@
 :root {
-  --text-color: #40464a;
-  --disable-color: #cccccc;
-  --font-light-color: #737b90;
+  --text-color: var(--color-Neutral-30);
+  --disable-color: var(--color-Neutral-80);
+  --font-light-color: var(--color-Neutral-50);
   --copyright-color: rgba(255, 255, 255, 0.48);
-  --input-color: #fafafa;
-  --border-color: #dee2e2;
+  --input-color: var(--color-Neutral-98);
+  --border-color: var(--color-Neutral-90);
 }
