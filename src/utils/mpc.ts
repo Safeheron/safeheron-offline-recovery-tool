@@ -10,6 +10,7 @@ import { Secp256k1HDKey, Ed25519HDKey } from '@safeheron/crypto-bip32'
 import { mnemonicToEntropy } from 'bip39'
 
 import blockchainUtil from './blockchain'
+import { ValidateAddressError } from './errorTypes'
 import { UnsupportBlockChainError } from './csv'
 import {
   padToLength,
@@ -133,7 +134,7 @@ const isDoge = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
 const isXRP = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
   XRP_CHAIN === blockchain
 
-export class ValidateAddressError extends Error {}
+export { ValidateAddressError }
 
 /**
  * Select the single correct address from the deriveAddresses result array
