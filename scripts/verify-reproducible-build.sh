@@ -69,6 +69,7 @@ fi
 
 TMPDIR_WORK=$(mktemp -d)
 DMG_STRUCTURE_MANIFEST=""
+DMG_FILE=""
 
 # --- Step 1: Extract .app ---
 echo "================================================================"
@@ -77,6 +78,7 @@ echo "Step 1: Extracting .app bundle..."
 WORK_APP="$TMPDIR_WORK/app"
 
 if [[ "$INPUT" == *.dmg ]]; then
+    DMG_FILE="$INPUT"
     MOUNT_POINT="$TMPDIR_WORK/mount"
     mkdir -p "$MOUNT_POINT"
     info "Mounting DMG: $INPUT"
@@ -125,6 +127,10 @@ if [[ "$INPUT" == *.dmg ]]; then
 elif [[ -d "$INPUT" && "$INPUT" == *.app ]]; then
     info "Copying .app bundle: $INPUT"
     cp -R "$INPUT" "$WORK_APP"
+    # The bundler emits the .app under bundle/macos/ and the .dmg under
+    # bundle/dmg/. Hash that sibling too when it is there.
+    DMG_FILE="$(find "$(dirname "$(dirname "$INPUT")")/dmg" -maxdepth 1 -name "*.dmg" 2>/dev/null | LC_ALL=C sort | head -n 1 || true)"
+    [ -n "$DMG_FILE" ] && info "Found sibling DMG: $(basename "$DMG_FILE")"
 else
     error "Input must be a .app directory or .dmg file"
 fi
@@ -221,6 +227,17 @@ else
     HASH="$APP_HASH"
 fi
 
+# Hash of the .dmg exactly as distributed. Deliberately NOT normalized: the
+# disk image carries filesystem timestamps and compression metadata that the
+# bundler does not pin, so two builds of the same commit are not expected to
+# match here. It answers "is this the same file?", not "is this the same
+# build?" — $HASH above is the one to compare across machines.
+DMG_HASH=""
+if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+    DMG_HASH="$(shasum -a 256 "$DMG_FILE" | awk '{print $1}')"
+    info "DMG artifact hash:   $DMG_HASH"
+fi
+
 # --- Step 5: Collect metadata ---
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$WORK_APP/Contents/Info.plist" 2>/dev/null || echo "unknown")
 GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -229,10 +246,19 @@ GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 echo "================================================================"
 echo ""
 echo "=== Reproducible Build Verification ==="
-echo "SHA-256:    $HASH"
-echo "Git Commit: $GIT_COMMIT"
-echo "Product:    $BINARY_NAME v$VERSION"
+echo "SHA-256:     $HASH"
+if [ -n "$DMG_HASH" ]; then
+    echo "DMG SHA-256: $DMG_HASH"
+fi
+echo "Git Commit:  $GIT_COMMIT"
+echo "Product:     $BINARY_NAME v$VERSION"
 echo ""
-echo "Compare this hash with other build machines."
-echo "Matching hashes confirm the builds are identical."
+echo "SHA-256     - reproducible build hash: normalized .app content plus dmg"
+echo "              structure. Compare across build machines; matching hashes"
+echo "              confirm the builds are identical."
+if [ -n "$DMG_HASH" ]; then
+    echo "DMG SHA-256 - hash of the .dmg artifact as distributed. Not normalized,"
+    echo "              so it differs between builds of the same commit; use it to"
+    echo "              confirm two people hold the same file."
+fi
 echo "========================================"
