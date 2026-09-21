@@ -10,6 +10,7 @@ import { Secp256k1HDKey, Ed25519HDKey } from '@safeheron/crypto-bip32'
 import { mnemonicToEntropy } from 'bip39'
 
 import blockchainUtil from './blockchain'
+import { ValidateAddressError } from './errorTypes'
 import { UnsupportBlockChainError } from './csv'
 import {
   padToLength,
@@ -46,6 +47,7 @@ import {
   LTC_CHAIN,
   LIQUID_CHAIN,
   LIQUID_TEST_CHAIN,
+  XRP_CHAIN,
 } from './const'
 
 export interface MultiAlgoHDKey {
@@ -129,8 +131,10 @@ const isLTC = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
   [LTC_CHAIN, LTC_TEST_CHAIN].includes(blockchain)
 const isDoge = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
   [DOGE_CHAIN, DOGE_TEST_CHAIN].includes(blockchain)
+const isXRP = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
+  XRP_CHAIN === blockchain
 
-export class ValidateAddressError extends Error {}
+export { ValidateAddressError }
 
 /**
  * Select the single correct address from the deriveAddresses result array
@@ -222,6 +226,8 @@ const deriveAddresses = (
     case LIQUID_CHAIN:
     case LIQUID_TEST_CHAIN:
       return blockchainUtil.liquid.derivedAddress(pubhex)
+    case XRP_CHAIN:
+      return blockchainUtil.xrp.derivedAddress(pubhex)
     default:
       // Reached when a row's Blockchain Type isn't in SUPPORTED_BLOCKCHAIN.
       // Backstop check — the worker's parseCsvLine also rejects unsupported chains.
@@ -385,6 +391,8 @@ export const recoverDerivedCSV = (
         priv,
         network === 'mainnet'
       )
+    } else if (isXRP(blockchain)) {
+      privateKey = blockchainUtil.xrp.formatPrivateKey(priv)
     }
 
     let outputAddress = address

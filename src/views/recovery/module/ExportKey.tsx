@@ -6,8 +6,13 @@ import { Button } from '@/components/base'
 import attentionIcon from '@img/attention.svg'
 import failIcon from '@img/fail.svg'
 import { sleep } from '@/utils/common'
-import { MissRequiredFieldError, UnsupportBlockChainError, MissDataError } from '@/utils/csv'
-import { ValidateAddressError } from '@/utils/mpc'
+import {
+  MissRequiredFieldError,
+  UnsupportBlockChainError,
+  MissDataError,
+  ValidateAddressError,
+  LiquidSDKError,
+} from '@/utils/errorTypes'
 import { useTranslation } from '@/i18n'
 import { useVersion } from '@/components/SelectVersion'
 import {
@@ -23,7 +28,6 @@ import { streamCsvProcess, StreamProgress, RecoverHDKeyError, NetworkDetectedErr
 import { getFileSize, getTempPath, copyFile, dialogSaveFile, removeTempFile, readFileText } from '@/utils/tauriFileIO'
 import { expandSortedJsonToTempCsv, InvalidFormatError, UnsupportedVersionError } from '@/utils/jsonBackup'
 import { restoreSourceOrder } from '@/utils/restoreSourceOrder'
-import { LiquidSDKError } from '@/wasm/liquidSDK'
 
 // Files under this size use a single worker (worker init overhead ~200ms
 // vs near-zero derive time for small files makes multi-worker pointless).

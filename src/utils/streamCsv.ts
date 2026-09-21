@@ -3,9 +3,14 @@ import {
   LIQUID_CHAIN,
   LIQUID_TEST_CHAIN,
 } from './const'
-import { MissRequiredFieldError, MissDataError, UnsupportBlockChainError } from './csv'
+import {
+  MissRequiredFieldError,
+  MissDataError,
+  UnsupportBlockChainError,
+  ValidateAddressError,
+  LiquidSDKError,
+} from './errorTypes'
 import { RecoverHDKeyError, NetworkDetectedError } from './errors'
-import { ValidateAddressError } from './mpc'
 import {
   getFileSize,
   writeFileChunk,
@@ -13,8 +18,6 @@ import {
 } from './tauriFileIO'
 import { parseCsvHeader, splitCsvFields } from './csvLineParser'
 import type { CsvHeaderInfo } from './csvLineParser'
-
-import { LiquidSDKError } from '@/wasm/liquidSDK'
 
 // --- Streaming pipeline orchestrator ---
 
