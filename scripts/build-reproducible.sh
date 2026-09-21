@@ -91,7 +91,7 @@ if rustup component list --installed 2>/dev/null | grep -q "^rust-src"; then
     error "rust-src is installed. Remove it before building: rustup component remove rust-src"
 fi
 
-info "Environment checks passed (Node $REQUIRED_NODE_VERSION, Rust $REQUIRED_RUST_VERSION, Xcode $REQUIRED_XCODE_VERSION)"
+info "Environment checks passed (Node $REQUIRED_NODE_VERSION, Rust $REQUIRED_RUST_VERSION, Xcode $REQUIRED_XCODE_VERSION, SDK $REQUIRED_SDK_VERSION)"
 
 # --- Fixed build directory (same on all machines) ---
 BUILD_DIR="/tmp/safeheron-reproducible-build"
@@ -150,6 +150,19 @@ export TZ=UTC
 export LC_ALL=C
 export LANG=C
 export CARGO_INCREMENTAL=0
+
+# MACOSX_DEPLOYMENT_TARGET is scrubbed rather than pinned to a value. It ends up
+# in the Mach-O load command, so a machine that exports it would pass every check
+# above and still produce a different binary. Pinning one value is not an option:
+# it applies to every target at once, while the two slices of the universal
+# binary have different floors (arm64 11.0, x86_64 10.13). Unsetting it means the
+# build always uses rustc's per-target defaults, which are fixed by the toolchain
+# version in rust-toolchain.toml. The product's minimum system version belongs in
+# tauri.conf.json, not in an environment variable.
+if [[ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]]; then
+    info "Ignoring MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET from the environment"
+fi
+unset MACOSX_DEPLOYMENT_TARGET
 
 EXTRA_RUSTFLAGS="${RUSTFLAGS:-}"
 export RUSTFLAGS="--remap-path-prefix=$BUILD_DIR=. --remap-path-prefix=$HOME=/build${EXTRA_RUSTFLAGS:+ $EXTRA_RUSTFLAGS}"
