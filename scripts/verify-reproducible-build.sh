@@ -128,8 +128,21 @@ elif [[ -d "$INPUT" && "$INPUT" == *.app ]]; then
     info "Copying .app bundle: $INPUT"
     cp -R "$INPUT" "$WORK_APP"
     # The bundler emits the .app under bundle/macos/ and the .dmg under
-    # bundle/dmg/. Hash that sibling too when it is there.
-    DMG_FILE="$(find "$(dirname "$(dirname "$INPUT")")/dmg" -maxdepth 1 -name "*.dmg" 2>/dev/null | LC_ALL=C sort | head -n 1 || true)"
+    # bundle/dmg/. Hash that sibling too when it is there. Refuse to guess when
+    # several are present: the DMG hash is meant to confirm two people hold the
+    # same file, so silently taking the first one by name would report an
+    # unrelated build's hash. build-reproducible.sh errors on this too.
+    DMG_DIR="$(dirname "$(dirname "$INPUT")")/dmg"
+    DMG_CANDIDATES=()
+    while IFS= read -r line; do
+        DMG_CANDIDATES+=("$line")
+    done < <(find "$DMG_DIR" -maxdepth 1 -name "*.dmg" 2>/dev/null | LC_ALL=C sort)
+    if [ "${#DMG_CANDIDATES[@]}" -gt 1 ]; then
+        error "Multiple .dmg files found in $DMG_DIR — expected at most one:
+$(printf '            - %s\n' "${DMG_CANDIDATES[@]##*/}")
+          Clean the stale ones, or pass the .dmg to verify directly."
+    fi
+    DMG_FILE="${DMG_CANDIDATES[0]:-}"
     [ -n "$DMG_FILE" ] && info "Found sibling DMG: $(basename "$DMG_FILE")"
 else
     error "Input must be a .app directory or .dmg file"
