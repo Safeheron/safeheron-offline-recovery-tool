@@ -84,7 +84,7 @@ if [[ "$INPUT" == *.dmg ]]; then
     info "Mounting DMG: $INPUT"
     hdiutil attach "$INPUT" -nobrowse -readonly -mountpoint "$MOUNT_POINT" -quiet
 
-    APP_IN_DMG=$(find "$MOUNT_POINT" -maxdepth 1 -name "*.app" -type d | head -n 1)
+    APP_IN_DMG=$(find "$MOUNT_POINT" -maxdepth 1 -name "*.app" -type d | LC_ALL=C sort | head -n 1 || true)
     if [ -z "$APP_IN_DMG" ]; then
         error "No .app bundle found inside DMG"
     fi

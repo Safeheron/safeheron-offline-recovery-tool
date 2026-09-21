@@ -209,15 +209,22 @@ echo "================================================================"
 echo "  DMG:         $DMG_PATH"
 echo "  SHA-256:     ${HASH_VALUE:-<missing>}       (reproducible build hash)"
 echo "  DMG SHA-256: ${DMG_HASH_VALUE:-<missing>}       (dmg artifact hash)"
-if [ "$SIG_STATE" = "UNSIGNED" ]; then
-    echo "  Signed:      No"
-else
-    echo "  Signed:      Yes"
-    if echo "$GK_LINE" | grep -q "accepted"; then
-        echo "  Gatekeeper:  ✅ accepted — signed and notarized"
-    else
-        echo "  Gatekeeper:  ❌ rejected (not notarized or invalid signature)"
-    fi
-fi
+# Match the signed state positively: an unparseable log must not read as "signed".
+case "$SIG_STATE" in
+    UNSIGNED)
+        echo "  Signed:      No"
+        ;;
+    SIGNED)
+        echo "  Signed:      Yes"
+        if echo "$GK_LINE" | grep -q "accepted"; then
+            echo "  Gatekeeper:  ✅ accepted — signed and notarized"
+        else
+            echo "  Gatekeeper:  ❌ rejected (not notarized or invalid signature)"
+        fi
+        ;;
+    *)
+        echo "  Signed:      <unknown> — could not parse $SIGN_LOG"
+        ;;
+esac
 echo ""
 info "Full logs: $VERIFY_LOG, $SIGN_LOG"
