@@ -48,6 +48,7 @@ import {
   LIQUID_CHAIN,
   LIQUID_TEST_CHAIN,
   XRP_CHAIN,
+  XRP_TEST_CHAIN,
 } from './const'
 
 export interface MultiAlgoHDKey {
@@ -132,7 +133,7 @@ const isLTC = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
 const isDoge = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
   [DOGE_CHAIN, DOGE_TEST_CHAIN].includes(blockchain)
 const isXRP = (blockchain: SUPPORTED_BLOCKCHAIN_TYPE) =>
-  XRP_CHAIN === blockchain
+  [XRP_CHAIN, XRP_TEST_CHAIN].includes(blockchain)
 
 export { ValidateAddressError }
 
@@ -227,6 +228,7 @@ const deriveAddresses = (
     case LIQUID_TEST_CHAIN:
       return blockchainUtil.liquid.derivedAddress(pubhex)
     case XRP_CHAIN:
+    case XRP_TEST_CHAIN:
       return blockchainUtil.xrp.derivedAddress(pubhex)
     default:
       // Reached when a row's Blockchain Type isn't in SUPPORTED_BLOCKCHAIN.
