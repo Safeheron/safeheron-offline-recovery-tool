@@ -1,6 +1,6 @@
 {
   "name": "Offline-Recovery-Tool",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "author": "Safeheron",
   "scripts": {
@@ -13,7 +13,7 @@
     "check:build-env": "./scripts/check-build-env.sh",
     "build": "tauri build --target universal-apple-darwin",
     "build:reproducible": "./scripts/build-reproducible.sh",
-    "test": "jest --silent",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --silent",
     "lint": "eslint src",
     "prepare": "husky install",
     "transfer": "node ./cli/index.js transfer"
@@ -34,7 +34,7 @@
   },
   "dependencies": {
     "@aptos-labs/ts-sdk": "^4.0.0",
-    "@mysten/sui": "^1.45.2",
+    "@mysten/sui": "^2.33.1",
     "@noble/hashes": "^1.3.2",
     "@psf/bch-js": "^6.8.3",
     "@safeheron/crypto-bip32": "^2.0.1",

@@ -3,6 +3,7 @@
 import { parse } from 'csv-parse/sync'
 import { stringify } from 'csv-stringify/sync'
 
+import { MissDataError, MissRequiredFieldError, UnsupportBlockChainError } from './errorTypes'
 import {
   CSV_FIELD_HD_PATH,
   CSV_FIELD_BLOCKCHAIN,
@@ -18,11 +19,7 @@ const requiredFields = [
   CSV_FIELD_ADDRESS,
 ]
 
-export class MissDataError extends Error {}
-
-export class MissRequiredFieldError extends Error {}
-
-export class UnsupportBlockChainError extends Error {}
+export { MissDataError, MissRequiredFieldError, UnsupportBlockChainError }
 
 const CSV_FORMULA_PREFIX = /^[=+\-@\t\r]/
 

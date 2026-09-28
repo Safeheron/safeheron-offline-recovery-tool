@@ -12,6 +12,7 @@ import ton from './ton'
 import ltc from './ltc'
 import doge from './doge'
 import liquid from './liquid'
+import xrp from './xrp'
 
 export default {
   bitcoin,
@@ -28,4 +29,5 @@ export default {
   ltc,
   doge,
   liquid,
+  xrp,
 }

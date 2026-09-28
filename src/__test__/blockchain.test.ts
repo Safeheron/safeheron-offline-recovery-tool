@@ -213,6 +213,28 @@ test('Liquid address derivation', async () => {
   expect(derivedAddress.sort()).toEqual(expectedDerivedAddressList.sort())
 })
 
+test('XRP address derivation', () => {
+  const data = [
+    {
+      // XRPL genesis account compressed public key
+      pubkeyHex:
+        '0330E7FC9D56BB25D6893BA3F317AE5BCF33B3291BD63DB32654A313222F7FD020',
+      address: 'rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh',
+    },
+  ]
+
+  data.forEach(d => {
+    const [addr] = blockchainUtil.xrp.derivedAddress(d.pubkeyHex)
+    expect(addr).toEqual(d.address)
+  })
+})
+
+test('XRP private key format', () => {
+  const privHex =
+    '1acaaedece405b2a958212629e16f2eb46b153eee94cdd350fdeff52795525b7'
+  expect(blockchainUtil.xrp.formatPrivateKey(privHex)).toEqual(`00${privHex}`)
+})
+
 test('Near address derivation', () => {
   const pubkeyHex =
     '3a5c1615c31b1c129a9bb594f68ffe15cdaa9de52f4f379e8cb5928e58cbdb4a'
