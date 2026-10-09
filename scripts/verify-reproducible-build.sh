@@ -69,6 +69,7 @@ fi
 
 TMPDIR_WORK=$(mktemp -d)
 DMG_STRUCTURE_MANIFEST=""
+DMG_FILE=""
 
 # --- Step 1: Extract .app ---
 echo "================================================================"
@@ -77,12 +78,13 @@ echo "Step 1: Extracting .app bundle..."
 WORK_APP="$TMPDIR_WORK/app"
 
 if [[ "$INPUT" == *.dmg ]]; then
+    DMG_FILE="$INPUT"
     MOUNT_POINT="$TMPDIR_WORK/mount"
     mkdir -p "$MOUNT_POINT"
     info "Mounting DMG: $INPUT"
     hdiutil attach "$INPUT" -nobrowse -readonly -mountpoint "$MOUNT_POINT" -quiet
 
-    APP_IN_DMG=$(find "$MOUNT_POINT" -maxdepth 1 -name "*.app" -type d | head -n 1)
+    APP_IN_DMG=$(find "$MOUNT_POINT" -maxdepth 1 -name "*.app" -type d | LC_ALL=C sort | head -n 1 || true)
     if [ -z "$APP_IN_DMG" ]; then
         error "No .app bundle found inside DMG"
     fi
@@ -125,6 +127,23 @@ if [[ "$INPUT" == *.dmg ]]; then
 elif [[ -d "$INPUT" && "$INPUT" == *.app ]]; then
     info "Copying .app bundle: $INPUT"
     cp -R "$INPUT" "$WORK_APP"
+    # The bundler emits the .app under bundle/macos/ and the .dmg under
+    # bundle/dmg/. Hash that sibling too when it is there. Refuse to guess when
+    # several are present: the DMG hash is meant to confirm two people hold the
+    # same file, so silently taking the first one by name would report an
+    # unrelated build's hash. build-reproducible.sh errors on this too.
+    DMG_DIR="$(dirname "$(dirname "$INPUT")")/dmg"
+    DMG_CANDIDATES=()
+    while IFS= read -r line; do
+        DMG_CANDIDATES+=("$line")
+    done < <(find "$DMG_DIR" -maxdepth 1 -name "*.dmg" 2>/dev/null | LC_ALL=C sort)
+    if [ "${#DMG_CANDIDATES[@]}" -gt 1 ]; then
+        error "Multiple .dmg files found in $DMG_DIR — expected at most one:
+$(printf '            - %s\n' "${DMG_CANDIDATES[@]##*/}")
+          Clean the stale ones, or pass the .dmg to verify directly."
+    fi
+    DMG_FILE="${DMG_CANDIDATES[0]:-}"
+    [ -n "$DMG_FILE" ] && info "Found sibling DMG: $(basename "$DMG_FILE")"
 else
     error "Input must be a .app directory or .dmg file"
 fi
@@ -221,6 +240,17 @@ else
     HASH="$APP_HASH"
 fi
 
+# Hash of the .dmg exactly as distributed. Deliberately NOT normalized: the
+# disk image carries filesystem timestamps and compression metadata that the
+# bundler does not pin, so two builds of the same commit are not expected to
+# match here. It answers "is this the same file?", not "is this the same
+# build?" — $HASH above is the one to compare across machines.
+DMG_HASH=""
+if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+    DMG_HASH="$(shasum -a 256 "$DMG_FILE" | awk '{print $1}')"
+    info "DMG artifact hash:   $DMG_HASH"
+fi
+
 # --- Step 5: Collect metadata ---
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$WORK_APP/Contents/Info.plist" 2>/dev/null || echo "unknown")
 GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
@@ -229,10 +259,19 @@ GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 echo "================================================================"
 echo ""
 echo "=== Reproducible Build Verification ==="
-echo "SHA-256:    $HASH"
-echo "Git Commit: $GIT_COMMIT"
-echo "Product:    $BINARY_NAME v$VERSION"
+echo "SHA-256:     $HASH"
+if [ -n "$DMG_HASH" ]; then
+    echo "DMG SHA-256: $DMG_HASH"
+fi
+echo "Git Commit:  $GIT_COMMIT"
+echo "Product:     $BINARY_NAME v$VERSION"
 echo ""
-echo "Compare this hash with other build machines."
-echo "Matching hashes confirm the builds are identical."
+echo "SHA-256     - reproducible build hash: normalized .app content plus dmg"
+echo "              structure. Compare across build machines; matching hashes"
+echo "              confirm the builds are identical."
+if [ -n "$DMG_HASH" ]; then
+    echo "DMG SHA-256 - hash of the .dmg artifact as distributed. Not normalized,"
+    echo "              so it differs between builds of the same commit; use it to"
+    echo "              confirm two people hold the same file."
+fi
 echo "========================================"

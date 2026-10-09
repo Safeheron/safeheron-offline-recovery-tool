@@ -14,13 +14,32 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# `cmd | head -1` is unsafe under `set -o pipefail`: head exits after the first
+# line, and if the producer writes anything after that it dies of SIGPIPE, the
+# pipeline reports 141, and the trailing `|| echo 'NOT FOUND'` prints a bogus
+# line *after* a perfectly good version string. Whether it bites is a race on
+# whether the producer finishes writing before head closes the pipe — measured
+# at roughly 1 run in 30 for `xcodebuild -version`, i.e. exactly the kind of
+# flake nobody wants to chase. Take the first line with parameter expansion
+# instead, and keep stderr so a genuine failure explains itself (e.g.
+# xcodebuild refusing to run because only the Command Line Tools are
+# installed).
+first_line() {
+    local out
+    if out="$("$@" 2>&1)"; then
+        printf '%s' "${out%%$'\n'*}"
+    else
+        printf 'NOT AVAILABLE — %s' "${out%%$'\n'*}"
+    fi
+}
+
 echo "=== Reproducible Build Environment Check ==="
 echo ""
 echo "macOS:       $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
 echo "Kernel:      $(uname -r)"
-echo "Xcode:       $(xcodebuild -version 2>/dev/null | head -1 || echo 'NOT FOUND')"
+echo "Xcode:       $(first_line xcodebuild -version)"
 echo "SDK:         $(xcrun --show-sdk-version 2>/dev/null || echo 'NOT FOUND')"
-echo "Clang:       $(clang --version 2>/dev/null | head -1 || echo 'NOT FOUND')"
+echo "Clang:       $(first_line clang --version)"
 echo ""
 echo "Rust:        $(rustc --version 2>/dev/null || echo 'NOT FOUND')"
 echo "Cargo:       $(cargo --version 2>/dev/null || echo 'NOT FOUND')"
@@ -41,10 +60,16 @@ echo "Git dirty:        $([ -z "$(git status --porcelain 2>/dev/null)" ] && echo
 echo ""
 echo "--- Pinned build env (set by build-reproducible.sh) ---"
 echo "SOURCE_DATE_EPOCH:       $(git log -1 --format=%ct 2>/dev/null || echo 'unknown')"
-echo "MACOSX_DEPLOYMENT_TARGET: 10.13"
 echo "TZ:                       UTC"
 echo "LC_ALL:                   C"
 echo "CARGO_INCREMENTAL:        0"
+echo ""
+# build-reproducible.sh does NOT set this, despite an earlier version of this
+# script printing a hardcoded "10.13" under the pinned list above. If it is set
+# in the shell it really does affect the build, and it must therefore match
+# across machines — so report what is actually in the environment.
+echo "--- Not pinned by the build script; must match across machines ---"
+echo "MACOSX_DEPLOYMENT_TARGET: ${MACOSX_DEPLOYMENT_TARGET:-<not set>}"
 echo ""
 echo "================================================"
 echo "Compare this output across all build machines."

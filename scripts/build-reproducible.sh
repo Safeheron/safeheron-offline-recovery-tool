@@ -19,6 +19,11 @@ error() { echo "  [ERROR] $*" >&2; exit 1; }
 REQUIRED_NODE_VERSION="22.16.0"
 REQUIRED_RUST_VERSION="1.88.0"
 REQUIRED_XCODE_VERSION="26.2"
+# Kept separate from the Xcode version on purpose: the macOS SDK bundled with a
+# given Xcode has not always carried the same version number, and it is the SDK
+# — not the Xcode release — that determines the framework versions recorded in
+# the binary.
+REQUIRED_SDK_VERSION="26.2"
 
 # --- Environment checks ---
 echo "================================================================"
@@ -29,28 +34,64 @@ command -v rustc      >/dev/null 2>&1 || error "rustc not found."
 command -v rustup     >/dev/null 2>&1 || error "rustup not found."
 command -v xcodebuild >/dev/null 2>&1 || error "xcodebuild not found. Install full Xcode, not just Command Line Tools."
 
-NODE_VERSION_RAW="$(node -v)"
+# Each version probe below runs inside a command substitution, so under
+# `set -e` a failing probe would abort the script silently. Capture stderr and
+# report it instead of dying with no output.
+if ! NODE_VERSION_RAW="$(node -v 2>&1)"; then
+    error "Could not run 'node -v': $NODE_VERSION_RAW"
+fi
 NODE_VERSION="${NODE_VERSION_RAW#v}"
 if [[ "$NODE_VERSION" != "$REQUIRED_NODE_VERSION" ]]; then
     error "Node version $NODE_VERSION detected; required $REQUIRED_NODE_VERSION."
 fi
 
-RUST_VERSION_RAW="$(rustc -V)"
+if ! RUST_VERSION_RAW="$(rustc -V 2>&1)"; then
+    error "Could not run 'rustc -V': $RUST_VERSION_RAW"
+fi
 if [[ "$RUST_VERSION_RAW" != "rustc $REQUIRED_RUST_VERSION"* ]]; then
     error "Rust version '$RUST_VERSION_RAW' detected; required rustc $REQUIRED_RUST_VERSION."
 fi
 
-XCODE_ALL="$(xcodebuild -version 2>/dev/null)"
+# The `command -v xcodebuild` check above passes even with only the Command
+# Line Tools installed: /usr/bin/xcodebuild is a shim that fails when it runs.
+# Report what it actually said rather than swallowing it.
+if ! XCODE_ALL="$(xcodebuild -version 2>&1)"; then
+    error "Could not run 'xcodebuild -version'. A full Xcode is required, not just Command Line Tools.
+          xcodebuild said: $XCODE_ALL
+          If Xcode is installed, point the toolchain at it:
+            sudo xcode-select -s /Applications/Xcode.app
+            sudo xcodebuild -license accept"
+fi
 XCODE_VERSION_RAW="${XCODE_ALL%%$'\n'*}"
 if [[ "$XCODE_VERSION_RAW" != "Xcode $REQUIRED_XCODE_VERSION"* ]]; then
     error "Xcode version '$XCODE_VERSION_RAW' detected; required Xcode $REQUIRED_XCODE_VERSION."
+fi
+
+# The right Xcode is not enough. The Command Line Tools ship their own SDK set
+# under /Library/Developer/CommandLineTools/SDKs, and the SDK actually used is
+# whichever the active developer dir resolves to — which xcode-select,
+# DEVELOPER_DIR or an explicit SDKROOT can each change. So a machine can pass
+# the Xcode check above and still build against a different SDK. It compiles
+# and bundles fine, but the SDK version is recorded in the binary's Mach-O
+# LC_BUILD_VERSION load command (readable with `vtool -show-build`), so the
+# hash cannot match a build made with the required SDK.
+if ! SDK_VERSION="$(xcrun --show-sdk-version 2>&1)"; then
+    error "Could not determine the macOS SDK version: ${SDK_VERSION%%$'\n'*}"
+fi
+if [[ "$SDK_VERSION" != "$REQUIRED_SDK_VERSION" ]]; then
+    error "macOS SDK $SDK_VERSION selected; required $REQUIRED_SDK_VERSION.
+          xcrun resolves the SDK to: $(xcrun --show-sdk-path 2>&1 | tail -1)
+          This usually means a newer Command Line Tools install is shadowing
+          Xcode's SDK. Fix for the current shell:
+            export SDKROOT=\"\$(xcodebuild -version -sdk macosx$REQUIRED_SDK_VERSION Path)\"
+          Permanent fix: sudo rm -rf /Library/Developer/CommandLineTools"
 fi
 
 if rustup component list --installed 2>/dev/null | grep -q "^rust-src"; then
     error "rust-src is installed. Remove it before building: rustup component remove rust-src"
 fi
 
-info "Environment checks passed (Node $REQUIRED_NODE_VERSION, Rust $REQUIRED_RUST_VERSION, Xcode $REQUIRED_XCODE_VERSION)"
+info "Environment checks passed (Node $REQUIRED_NODE_VERSION, Rust $REQUIRED_RUST_VERSION, Xcode $REQUIRED_XCODE_VERSION, SDK $REQUIRED_SDK_VERSION)"
 
 # --- Fixed build directory (same on all machines) ---
 BUILD_DIR="/tmp/safeheron-reproducible-build"
@@ -110,6 +151,19 @@ export LC_ALL=C
 export LANG=C
 export CARGO_INCREMENTAL=0
 
+# MACOSX_DEPLOYMENT_TARGET is scrubbed rather than pinned to a value. It ends up
+# in the Mach-O load command, so a machine that exports it would pass every check
+# above and still produce a different binary. Pinning one value is not an option:
+# it applies to every target at once, while the two slices of the universal
+# binary have different floors (arm64 11.0, x86_64 10.13). Unsetting it means the
+# build always uses rustc's per-target defaults, which are fixed by the toolchain
+# version in rust-toolchain.toml. The product's minimum system version belongs in
+# tauri.conf.json, not in an environment variable.
+if [[ -n "${MACOSX_DEPLOYMENT_TARGET:-}" ]]; then
+    info "Ignoring MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET from the environment"
+fi
+unset MACOSX_DEPLOYMENT_TARGET
+
 EXTRA_RUSTFLAGS="${RUSTFLAGS:-}"
 export RUSTFLAGS="--remap-path-prefix=$BUILD_DIR=. --remap-path-prefix=$HOME=/build${EXTRA_RUSTFLAGS:+ $EXTRA_RUSTFLAGS}"
 
@@ -153,26 +207,37 @@ SIGN_LOG="$LOG_DIR/inspect-signature.log"
 ./scripts/inspect-signature.sh "$DMG_PATH" > "$SIGN_LOG" 2>&1 \
     || { cat "$SIGN_LOG"; error "Signature inspection failed."; }
 
-# Parse the bits we care about.
-HASH_VALUE=$(grep -E "^SHA-256:" "$VERIFY_LOG" | awk '{print $2}' | head -n1)
-SIG_STATE=$(grep -E "^  State:" "$SIGN_LOG" | awk '{print $2}' | head -n1)
-GK_LINE=$(grep -E "^  Gatekeeper:" "$SIGN_LOG" | head -n1)
+# Parse the bits we care about. Single-process awk rather than
+# `grep | awk | head`: the latter races with SIGPIPE under pipefail, the same
+# way check-build-env.sh used to.
+HASH_VALUE=$(awk '/^SHA-256:/{print $2; exit}' "$VERIFY_LOG")
+DMG_HASH_VALUE=$(awk '/^DMG SHA-256:/{print $3; exit}' "$VERIFY_LOG")
+SIG_STATE=$(awk '/^  State:/{print $2; exit}' "$SIGN_LOG")
+GK_LINE=$(awk '/^  Gatekeeper:/{print; exit}' "$SIGN_LOG")
 
 echo ""
 echo "================================================================"
 echo "Build summary"
 echo "================================================================"
-echo "  DMG:    $DMG_PATH"
-echo "  SHA-256: ${HASH_VALUE:-<missing>}"
-if [ "$SIG_STATE" = "UNSIGNED" ]; then
-    echo "  Signed:  No"
-else
-    echo "  Signed:  Yes"
-    if echo "$GK_LINE" | grep -q "accepted"; then
-        echo "  Gatekeeper: ✅ accepted — signed and notarized"
-    else
-        echo "  Gatekeeper: ❌ rejected (not notarized or invalid signature)"
-    fi
-fi
+echo "  DMG:         $DMG_PATH"
+echo "  SHA-256:     ${HASH_VALUE:-<missing>}       (reproducible build hash)"
+echo "  DMG SHA-256: ${DMG_HASH_VALUE:-<missing>}       (dmg artifact hash)"
+# Match the signed state positively: an unparseable log must not read as "signed".
+case "$SIG_STATE" in
+    UNSIGNED)
+        echo "  Signed:      No"
+        ;;
+    SIGNED)
+        echo "  Signed:      Yes"
+        if echo "$GK_LINE" | grep -q "accepted"; then
+            echo "  Gatekeeper:  ✅ accepted — signed and notarized"
+        else
+            echo "  Gatekeeper:  ❌ rejected (not notarized or invalid signature)"
+        fi
+        ;;
+    *)
+        echo "  Signed:      <unknown> — could not parse $SIGN_LOG"
+        ;;
+esac
 echo ""
 info "Full logs: $VERIFY_LOG, $SIGN_LOG"

@@ -27,6 +27,7 @@ export const DOGE_CHAIN = 'dogecoin'
 export const DOGE_TEST_CHAIN = 'dogecoin testnet'
 export const LIQUID_CHAIN = 'liquid'
 export const LIQUID_TEST_CHAIN = 'liquid testnet'
+export const XRP_CHAIN = 'xrp'
 
 export const SUPPORTED_BLOCKCHAIN = [
   EVM_CHAIN,
@@ -49,6 +50,7 @@ export const SUPPORTED_BLOCKCHAIN = [
   DOGE_TEST_CHAIN,
   LIQUID_CHAIN,
   LIQUID_TEST_CHAIN,
+  XRP_CHAIN,
 ] as const
 
 export type SUPPORTED_BLOCKCHAIN_TYPE = (typeof SUPPORTED_BLOCKCHAIN)[number]

@@ -2,6 +2,7 @@
 import initWasm from '../lib/liquid/liquid'
 // @ts-ignore
 import liquidWasmBuffer from '../lib/liquid/liquid.wasm'
+import { LiquidSDKError } from '../utils/errorTypes'
 
 import BaseSDK from './baseSDK'
 
@@ -29,13 +30,7 @@ const getEnvironment = (): 'node' | 'browser' => {
   return 'node'
 }
 
-/** Thrown when the Liquid WASM call returns a non-success status. */
-export class LiquidSDKError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'LiquidSDKError'
-  }
-}
+export { LiquidSDKError }
 
 export class LiquidSDK extends BaseSDK {
   public readonly instance?: WebAssembly.Instance
