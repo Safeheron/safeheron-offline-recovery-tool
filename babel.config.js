@@ -9,7 +9,10 @@ module.exports = function (api) {
         {
           corejs: 3,
           useBuiltIns: 'usage',
-          modules: isTest ? 'commonjs' : false,
+          // 'auto' lets babel-jest keep dynamic import() intact when Jest
+          // runs with --experimental-vm-modules (needed for ESM-only deps
+          // such as @mysten/sui v2); it still emits CommonJS otherwise.
+          modules: isTest ? 'auto' : false,
         },
       ],
     ],

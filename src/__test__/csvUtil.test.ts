@@ -131,6 +131,18 @@ test('the missing required field csv string should report an error', () => {
   expect(() => csvParse(missRequiredFieldCsvStr)).toThrowError('HD Path')
 })
 
+const xrpTestnetCsvStr =
+`Account Name,Blockchain Type,Network,Address,Address Type,HD Path
+钱包 1,XRP,mainnet,rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh,DEFAULT,m/44/666/0/0/0
+钱包 1,XRP_TEST,testnet,rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh,DEFAULT,m/44/666/0/0/0
+`
+
+test('XRP_TEST is accepted as an alias of the XRP chain', () => {
+  const rows = csvParse<Record<string, string>>(xrpTestnetCsvStr)
+  expect(rows).toHaveLength(2)
+  expect(rows[1]['Blockchain Type']).toBe('XRP_TEST')
+})
+
 test('the unsupport chaincode value csv string should report an error', () => {
   expect(() => csvParse(unsupportBlockchainCsvStr)).toThrowError(UnsupportBlockChainError)
   expect(() => csvParse(unsupportBlockchainCsvStr)).toThrowError('Cosmos | Kcc')
