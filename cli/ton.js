@@ -47,52 +47,70 @@ const sha256Key = name => {
 }
 
 const getJettonDecimals = async (client, jettonMasterAddress) => {
-  const fallbackDecimals = 9
-  const result = await client.runMethod(
+  const fail = reason =>
+    new Error(`${reason}. Refusing to guess the jetton precision.`)
+
+  // 1. Read the TEP-64 content cell from the jetton master
+  const { stack } = await client.runMethod(
     Address.parse(jettonMasterAddress),
     'get_jetton_data'
   )
+  stack.readBigNumber() // total_supply
+  stack.readNumber() // mintable
+  stack.readAddress() // admin_address
+  const content = stack.readCell().beginParse()
+  const prefix = content.loadUint(8)
 
-  result.stack.readBigNumber() // total_supply
-  result.stack.readNumber() // mintable
-  result.stack.readAddress() // admin_address
-  const jettonContent = result.stack.readCell()
-
-  const slice = jettonContent.beginParse()
-  const prefix = slice.loadUint(8)
-
+  // 2. Locate the raw decimals value, on-chain or off-chain
+  let raw
+  let source
   if (prefix === 0x00) {
-    // on-chain TEP-64 content
-    const dict = slice.loadDict(
+    source = 'on-chain jetton metadata'
+    const dict = content.loadDict(
       Dictionary.Keys.BigUint(256),
       Dictionary.Values.Cell()
     )
-    const decimalsCell = dict.get(sha256Key('decimals'))
-    if (decimalsCell) {
-      try {
-        const s = decimalsCell.beginParse()
-        s.loadUint(8) // snake prefix
-        return parseInt(s.loadStringTail()) || fallbackDecimals
-      } catch {
-        return fallbackDecimals
-      }
+    const cell = dict.get(sha256Key('decimals'))
+    if (!cell) {
+      return 9 // TEP-64: decimals is optional and defaults to 9
     }
+    const value = cell.beginParse()
+    value.loadUint(8) // snake-format prefix
+    raw = value.loadStringTail()
   } else if (prefix === 0x01) {
-    // off-chain: fetch the metadata URI
-    const uri = slice.loadStringTail()
+    const uri = content.loadStringTail()
+    source = `off-chain jetton metadata ${uri}`
     if (!isSafeUrl(uri)) {
-      return fallbackDecimals
+      throw fail(`Jetton metadata URI is not a public HTTPS URL: ${uri}`)
     }
+    let json
     try {
       const res = await fetch(uri)
-      const json = await res.json()
-      return parseInt(json.decimals) || fallbackDecimals
-    } catch {
-      return fallbackDecimals
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+      json = await res.json()
+    } catch (err) {
+      throw fail(`Failed to fetch ${source}: ${err.message}`)
     }
+    if (json === null || typeof json !== 'object' || !('decimals' in json)) {
+      throw fail(`No "decimals" field in ${source}`)
+    }
+    raw = json.decimals
+  } else {
+    throw fail(`Unsupported jetton content prefix 0x${prefix.toString(16)}`)
   }
 
-  return fallbackDecimals // fallback
+  // 3. Validate: a non-negative integer up to 255 ("0" is a legal precision)
+  const text = String(raw).trim()
+  if (!/^\d+$/.test(text)) {
+    throw fail(`Invalid decimals "${raw}" in ${source}`)
+  }
+  const decimals = Number(text)
+  if (decimals > 255) {
+    throw fail(`Unreasonable decimals ${decimals} in ${source}`)
+  }
+  return decimals
 }
 
 const mpcSigner = async (cell, privateKey) => {
@@ -202,12 +220,12 @@ const ftTransfer = async config => {
 
   const jettonDecimals = await getJettonDecimals(client, ftoken)
 
-  const coins = parseAmount(amount, Number(jettonDecimals || 9))
+  const coins = parseAmount(amount, jettonDecimals)
 
   const commonBodyCell = beginCell()
     .storeUint(0x0f8a7ea5, 32) // opcode for jetton transfer
     .storeUint(0, 64) // query id
-    .storeCoins(coins) // jetton amount, amount * 10^9, note: usdt is 10^6
+    .storeCoins(coins) // jetton amount in base units (amount * 10^decimals)
     .storeAddress(Address.parse(receiver))
     .storeAddress(Address.parse(sender)) // response destination
     .storeBit(0) // no custom payload
@@ -278,4 +296,5 @@ module.exports = {
   transfer,
   ftTransfer,
   handleException,
+  getJettonDecimals,
 }

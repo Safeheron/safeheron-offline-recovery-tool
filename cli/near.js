@@ -14,6 +14,13 @@ const { TypedError } = require('near-api-js/lib/providers')
 const { parseAmount, logReceipt } = require('./utils')
 const { validateCustomRpcUrl } = require('./rpc')
 
+const { parseNearAmount, formatNearAmount } = nearAPI.utils.format
+
+// A typical NEP-141 token asks for ~0.00125 NEAR to register a receiver.
+// The contract itself reports the minimum, so a malicious token could demand
+// any amount and it would be paid straight to that contract. Cap it.
+const MAX_STORAGE_DEPOSIT_NEAR = '0.1'
+
 const patchNearProvider = near => {
   const provider = near?.connection?.provider
   if (!provider || provider.__safeheronPatchedSendJsonRpc) {
@@ -114,11 +121,31 @@ const ftTransfer = async config => {
   ])
   if (!balance) {
     const bound = await contract.storage_balance_bounds()
+    const deposit = String(bound?.min ?? '')
+    if (!/^\d+$/.test(deposit)) {
+      throw new Error(
+        `Token contract ${ftoken} returned an invalid storage deposit: ${deposit}`
+      )
+    }
+    const depositNear = formatNearAmount(deposit)
+    if (BigInt(deposit) > BigInt(parseNearAmount(MAX_STORAGE_DEPOSIT_NEAR))) {
+      throw new Error(
+        `Token contract ${ftoken} requires a ${depositNear} NEAR storage deposit to register ${receiver}, above the ${MAX_STORAGE_DEPOSIT_NEAR} NEAR limit. Aborted.`
+      )
+    }
+    const notice = `Receiver ${receiver} is not registered with ${ftoken}. A one-time storage deposit of ${depositNear} NEAR will be paid from your account to the token contract.`
+    if (config.confirm) {
+      if (!(await config.confirm(notice))) {
+        throw new Error('Storage deposit declined. No transaction was sent.')
+      }
+    } else {
+      console.log(notice)
+    }
     await contract.storage_deposit({
       args: {
         account_id: receiver,
       },
-      amount: bound.min,
+      amount: deposit,
     })
   }
   const hash = await contract.ft_transfer({
