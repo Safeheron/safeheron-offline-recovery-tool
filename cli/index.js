@@ -209,11 +209,26 @@ const action = async (blockchain, sender, receiver, amount, options) => {
   const ins = ora('transfer in progress\n')
   ins.start()
   const blockchainIns = getBlockChainIns(config.blockchain)
+  // Lets a chain ask for an extra confirmation mid-transfer (e.g. an extra
+  // deposit that is only known after querying the chain). Honors -y.
+  const confirm = async message => {
+    if (config.yes) {
+      ins.info(message)
+      ins.start()
+      return true
+    }
+    ins.stop()
+    const res = await inquirer.prompt([
+      { name: 'ok', message: `${message}\n  Continue?`, type: 'confirm' },
+    ])
+    ins.start()
+    return res.ok
+  }
   try {
     if (!config.ftoken) {
       await blockchainIns.transfer(config)
     } else {
-      await blockchainIns.ftTransfer(config)
+      await blockchainIns.ftTransfer({ ...config, confirm })
     }
     ins.succeed('transfer completed')
   } catch (err) {

@@ -18,7 +18,7 @@ const {
   ComputeBudgetProgram,
 } = require('@solana/web3.js')
 const {
-  createTransferInstruction,
+  createTransferCheckedInstruction,
   getAccount,
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
@@ -230,12 +230,17 @@ const ftTransfer = async config => {
     }
   }
 
+  // TransferChecked makes the token program verify `decimals` against the
+  // mint on-chain, so a wrong precision from the RPC fails instead of
+  // transferring the wrong amount.
   instructions.push(
-    createTransferInstruction(
+    createTransferCheckedInstruction(
       sourceAccountAddress,
+      mintAddress,
       destinationAccountAddress,
       signer.publicKey,
-      parseAmount(amount, decimals)
+      parseAmount(amount, decimals),
+      decimals
     )
   )
   await sendTransactionByCluster(cluster, signer, instructions, network)
