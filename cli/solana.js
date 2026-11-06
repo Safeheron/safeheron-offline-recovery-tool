@@ -19,11 +19,18 @@ const {
 } = require('@solana/web3.js')
 const {
   createTransferCheckedInstruction,
+  createTransferCheckedWithFeeInstruction,
   getAccount,
   TokenAccountNotFoundError,
   TokenInvalidAccountOwnerError,
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  unpackMint,
+  getTransferFeeConfig,
+  getEpochFee,
+  calculateFee,
 } = require('@solana/spl-token')
 const BigNumber = require('bignumber.js')
 
@@ -170,33 +177,55 @@ const transfer = async config => {
   await sendTransactionByCluster(cluster, signer, instructions, network)
 }
 
+const TOKEN_PROGRAM_IDS = [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]
+
+// Reads the mint: which token program owns it, its precision and, for a
+// Token-2022 mint that charges a transfer fee, this epoch's fee schedule.
+// Other Token-2022 extensions are left to the chain to accept or reject.
+const inspectMint = async (connection, mintAddress) => {
+  const info = await connection.getAccountInfo(mintAddress)
+  const programId = TOKEN_PROGRAM_IDS.find(id => info?.owner?.equals(id))
+  if (!programId) {
+    throw new Error(`${mintAddress.toBase58()} is not a token mint`)
+  }
+  const mint = unpackMint(mintAddress, info, programId)
+  const feeConfig = getTransferFeeConfig(mint)
+  const transferFee = feeConfig
+    ? getEpochFee(feeConfig, BigInt((await connection.getEpochInfo()).epoch))
+    : null
+  return { programId, decimals: mint.decimals, transferFee }
+}
+
 const ftTransfer = async config => {
   const { amount, receiver, network, privateKey, rpc, ftoken } = config
   const cluster = createConnectionCluster(network, rpc)
   const mainConnection = cluster[0]
 
   const mintAddress = new PublicKey(ftoken)
-
-  const info = await mainConnection.getParsedAccountInfo(mintAddress)
-  const decimals = info.value?.data?.parsed?.info?.decimals
-  if (!decimals) {
-    throw new Error('Failed to get token currency precision')
-  }
+  const { programId, decimals, transferFee } = await inspectMint(
+    mainConnection,
+    mintAddress
+  )
 
   const signer = new MPCSigner(privateKey)
+  const receiverPubkey = new PublicKey(receiver)
 
   const sourceAccountAddress = getAssociatedTokenAddressSync(
     mintAddress,
-    signer.publicKey
+    signer.publicKey,
+    false,
+    programId
   )
 
   const destinationAccountAddress = getAssociatedTokenAddressSync(
     mintAddress,
-    new PublicKey(receiver)
+    receiverPubkey,
+    false,
+    programId
   )
 
   try {
-    await getAccount(mainConnection, sourceAccountAddress)
+    await getAccount(mainConnection, sourceAccountAddress, undefined, programId)
   } catch (err) {
     if (
       err instanceof TokenAccountNotFoundError ||
@@ -211,7 +240,12 @@ const ftTransfer = async config => {
 
   const instructions = []
   try {
-    await getAccount(mainConnection, destinationAccountAddress)
+    await getAccount(
+      mainConnection,
+      destinationAccountAddress,
+      undefined,
+      programId
+    )
   } catch (err) {
     if (
       err instanceof TokenAccountNotFoundError ||
@@ -221,8 +255,9 @@ const ftTransfer = async config => {
         createAssociatedTokenAccountInstruction(
           signer.publicKey,
           destinationAccountAddress,
-          new PublicKey(receiver),
-          mintAddress
+          receiverPubkey,
+          mintAddress,
+          programId
         )
       )
     } else {
@@ -230,23 +265,55 @@ const ftTransfer = async config => {
     }
   }
 
+  const rawAmount = BigInt(parseAmount(amount, decimals).toFixed(0))
+
   // TransferChecked makes the token program verify `decimals` against the
   // mint on-chain, so a wrong precision from the RPC fails instead of
-  // transferring the wrong amount.
-  instructions.push(
-    createTransferCheckedInstruction(
-      sourceAccountAddress,
-      mintAddress,
-      destinationAccountAddress,
-      signer.publicKey,
-      parseAmount(amount, decimals),
-      decimals
+  // transferring the wrong amount. The fee variant additionally makes the
+  // program verify `fee` against the mint's fee config.
+  if (transferFee) {
+    const fee = calculateFee(transferFee, rawAmount)
+    const toUnits = raw => new BigNumber(raw.toString()).shiftedBy(-decimals).toFixed()
+    console.log(
+      `Token-2022 transfer fee: ${toUnits(fee)}, receiver gets ${toUnits(rawAmount - fee)}`
     )
-  )
+    instructions.push(
+      createTransferCheckedWithFeeInstruction(
+        sourceAccountAddress,
+        mintAddress,
+        destinationAccountAddress,
+        signer.publicKey,
+        rawAmount,
+        decimals,
+        fee,
+        [],
+        programId
+      )
+    )
+  } else {
+    instructions.push(
+      createTransferCheckedInstruction(
+        sourceAccountAddress,
+        mintAddress,
+        destinationAccountAddress,
+        signer.publicKey,
+        rawAmount,
+        decimals,
+        [],
+        programId
+      )
+    )
+  }
   await sendTransactionByCluster(cluster, signer, instructions, network)
 }
 
-const handleException = err => err?.transactionMessage || err?.message
+// Surfaces the chain's own error, with program logs when the RPC returned
+// them, instead of a generic failure message.
+const handleException = err => {
+  const message = err?.transactionMessage || err?.message
+  const logs = err?.transactionError?.logs
+  return logs?.length ? `${message}\n${logs.join('\n')}` : message
+}
 
 module.exports = {
   transfer,
