@@ -1,6 +1,6 @@
 ## CLI transfer tool
 ### Prerequisites
-The cli is built by NodeJS. So you must install NodeJS >= 16. Recommended [Node16.16.0](https://nodejs.org/dist/v16.16.0/) . 
+The cli is built by NodeJS. So you must install NodeJS >= 22. Recommended [Node 22 LTS](https://nodejs.org/en/download) . 
 
 If you already have nodejs installed, you need to install the project's npm dependencies.
 ```

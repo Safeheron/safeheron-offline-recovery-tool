@@ -180,6 +180,18 @@ describe('recoverDerivedCSV', () => {
     expect(cache.childKeyCache.size).toBeGreaterThan(0)
   })
 
+  test('XRP_TEST derives the same classic r-address and key format as XRP', () => {
+    const rows: RawCSVRow[] = [
+      makeRow('m/44/666/0/0/0', 'secp256k1', 'XRP'),
+      { ...makeRow('m/44/666/0/0/0', 'secp256k1', 'XRP_TEST'), Network: 'testnet' },
+    ]
+    const [xrp, xrpTest] = recoverDerivedCSV(rows, hdKey)
+    expect(xrpTest.Address).toBe(xrp.Address)
+    expect(xrpTest.Address.startsWith('r')).toBe(true)
+    expect(xrpTest['Private Key']).toBe(xrp['Private Key'])
+    expect(xrpTest['Private Key'].startsWith('00')).toBe(true)
+  })
+
   test('throws ValidateAddressError for wrong address', () => {
     const rows: RawCSVRow[] = [{
       'HD Path': 'm/44/666/0/0/0',
